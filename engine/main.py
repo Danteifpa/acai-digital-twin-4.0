@@ -1,105 +1,51 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 import numpy as np
 
-app = FastAPI(
-    title="Açaí Thermal Digital Twin Engine",
-    description="Motor de simulação física e cinética para pasteurização de açaí (TCC 1)",
-    version="1.0.0"
-)
+def resolver_perfil_termico(tempo_s: float, temp_banho_c: float, temp_inicial_c: float):
+    if tempo_s <= 0:
+        return temp_inicial_c, temp_inicial_c
 
-class TelemetriaInput(BaseModel):
-    lote_id: str = Field(..., example="LOTE-TCC1-01")
-    tempo_decorrido_s: float = Field(..., ge=0.0, example=45.0)
-    temp_banho_c: float = Field(..., ge=20.0, le=100.0, example=82.5)
-    temp_inicial_c: float = Field(default=25.0, ge=5.0, le=40.0, example=25.0)
+    # Propriedades térmicas médias do açaí / água
+    # Raio da baga: r = 0.007 m (14 mm de diâmetro)
+    R = 0.007
+    alpha = 1.4e-7  # Difusividade térmica (m^2/s)
+    
+    # Discretização com garantia de estabilidade numérica
+    Nr = 15  # Número de nós radiais
+    dr = R / (Nr - 1)
+    
+    # Passo de tempo seguro respeitando Fourier Fo <= 0.2
+    dt_seguro = 0.2 * (dr**2) / alpha
+    n_passos = int(np.ceil(tempo_s / dt_seguro))
+    dt = tempo_s / n_passos
 
-class DigitalTwinOutput(BaseModel):
-    lote_id: str
-    tempo_decorrido_s: float
-    temp_banho_c: float
-    temp_superficie_c: float
-    temp_centro_c: float
-    taxa_inativacao_pct: float
-    retencao_antocianinas_pct: float
-    status_processo: str
+    # Malha de temperatura inicial (homogénea)
+    T = np.full(Nr, temp_inicial_c, dtype=np.float64)
+    r = np.linspace(0, R, Nr)
 
-@app.post("/api/v1/simulate", response_model=DigitalTwinOutput)
-def simular_estado_termico(dados: TelemetriaInput):
-    try:
-        # Constantes termofísicas
-        R = 0.0065          # 6.5 mm
-        rho = 1030.0        # kg/m^3
-        cp = 3700.0         # J/(kg.K)
-        k = 0.52            # W/(m.K)
-        alpha = k / (rho * cp)
-        h = 600.0           # W/(m^2.K)
+    # Coeficiente convectivo do banho maria com agitação
+    h = 350.0       # W/(m^2·K)
+    k = 0.6         # Condutividade térmica (W/m·K)
+    biot_factor = h * dr / k
 
-        # Cinética (Arrhenius)
-        R_u = 8.314
-        Ea_enz = 92000.0
-        k_ref_enz = 0.045
-        T_ref = 353.15
+    # Integração temporal estável
+    for _ in range(n_passos):
+        T_novo = T.copy()
+        
+        # 1. Condição de simetria no centro (r = 0): dT/dr = 0
+        # Regra de L'Hôpital na equação esférica: dT/dt = 6 * alpha * (T[1] - T[0]) / dr^2
+        T_novo[0] = T[0] + 6.0 * alpha * (dt / (dr**2)) * (T[1] - T[0])
+        
+        # 2. Nós internos (1 a Nr - 2)
+        for i in range(1, Nr - 1):
+            termo_difusao = (T[i+1] - 2.0*T[i] + T[i-1]) / (dr**2)
+            termo_esferico = (2.0 / r[i]) * ((T[i+1] - T[i-1]) / (2.0 * dr))
+            T_novo[i] = T[i] + alpha * dt * (termo_difusao + termo_esferico)
+            
+        # 3. Superfície exterior (r = R): balanço convectivo de Cauchy
+        T_novo[-1] = (T_novo[-2] + biot_factor * temp_banho_c) / (1.0 + biot_factor)
+        
+        T = np.clip(T_novo, temp_inicial_c, temp_banho_c)
 
-        Ea_ant = 70000.0
-        k_ref_ant = 0.0018
-
-        # Malha 1D esférica
-        N_r = 25
-        dr = R / (N_r - 1)
-        r = np.linspace(0, R, N_r)
-
-        dt = 0.35 * (dr**2) / alpha
-        n_steps = max(1, int(dados.tempo_decorrido_s / dt))
-
-        T = np.full(N_r, dados.temp_inicial_c)
-        T_novo = np.copy(T)
-
-        dose_enz = 0.0
-        dose_ant = 0.0
-
-        for _ in range(n_steps):
-            # Centro: r = 0
-            T_novo[0] = T[0] + 6.0 * alpha * dt * (T[1] - T[0]) / (dr**2)
-
-            # Polpa intermediária: condução via Lei de Fourier
-            for i in range(1, N_r - 1):
-                d2T = (T[i+1] - 2*T[i] + T[i-1]) / (dr**2)
-                dT = (T[i+1] - T[i-1]) / (2 * dr)
-                T_novo[i] = T[i] + alpha * dt * (d2T + (2.0 / r[i]) * dT)
-
-            # Superfície: balanço convectivo de Newton com condução de Fourier
-            T_novo[-1] = (k * T_novo[-2] + h * dr * dados.temp_banho_c) / (k + h * dr)
-            T[:] = T_novo[:]
-
-            # Camada da polpa
-            T_polpa_K = T[int(N_r * 0.75)] + 273.15
-            k_enz = k_ref_enz * np.exp(- (Ea_enz / R_u) * ((1.0 / T_polpa_K) - (1.0 / T_ref)))
-            k_ant = k_ref_ant * np.exp(- (Ea_ant / R_u) * ((1.0 / T_polpa_K) - (1.0 / T_ref)))
-
-            dose_enz += k_enz * dt
-            dose_ant += k_ant * dt
-
-        inativacao_pct = float(np.clip((1.0 - np.exp(-dose_enz)) * 100.0, 0.0, 100.0))
-        retencao_ant_pct = float(np.clip(np.exp(-dose_ant) * 100.0, 0.0, 100.0))
-
-        if inativacao_pct < 90.0:
-            status = "EM_AQUECIMENTO"
-        elif inativacao_pct >= 90.0 and retencao_ant_pct >= 80.0:
-            status = "OTIMIZADO"
-        else:
-            status = "DEGRADACAO_RISCO"
-
-        return DigitalTwinOutput(
-            lote_id=dados.lote_id,
-            tempo_decorrido_s=round(dados.tempo_decorrido_s, 1),
-            temp_banho_c=round(dados.temp_banho_c, 2),
-            temp_superficie_c=round(float(T[-1]), 2),
-            temp_centro_c=round(float(T[0]), 2),
-            taxa_inativacao_pct=round(inativacao_pct, 2),
-            retencao_antocianinas_pct=round(retencao_ant_pct, 2),
-            status_processo=status
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro interno de simulação: {str(e)}")
+    temp_centro = float(T[0])
+    temp_superficie = float(T[-1])
+    return temp_centro, temp_superficie
