@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend 
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine 
 } from 'recharts';
 import { 
   Activity, ShieldCheck, Thermometer, Droplet, Wifi, 
@@ -45,7 +45,6 @@ function Indicador({ icon: Icon, label, value, unit, color, extra }) {
   );
 }
 
-// Representação Gráfica da Baga de Açaí com Gradiente Radial
 function EsferaAcai({ tempSup, tempCentro }) {
   const getCor = (temp) => {
     const t = Math.max(25, Math.min(85, temp));
@@ -61,7 +60,10 @@ function EsferaAcai({ tempSup, tempCentro }) {
 
   return (
     <div className="flex flex-col items-center justify-center p-4 bg-slate-950/60 rounded-2xl border border-slate-800">
-      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Corte Radial da Baga (r=0 até r=R)</span>
+      <div className="text-center mb-3">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 block">Corte Radial da Baga (r=0 até r=R)</span>
+        <span className="text-[10px] font-mono text-purple-400 block mt-0.5">Diâmetro: 14.0 mm (Calibre Médio Padronizado)</span>
+      </div>
       <div className="relative flex items-center justify-center w-48 h-48">
         <div 
           className="absolute w-44 h-44 rounded-full transition-colors duration-500 border-4 shadow-2xl flex items-center justify-center"
@@ -126,7 +128,14 @@ export default function DashboardDigitalTwin() {
       }
 
       if (!mounted) return;
-      const ordenado = [...(data ?? [])].reverse();
+      const ordenado = (data ?? []).reverse().map(d => ({
+        tempo_decorrido_s: Number(d.tempo_decorrido_s || 0),
+        temp_superficie_c: Number(d.temp_superficie_c || 25),
+        temp_centro_c: Number(d.temp_centro_c || 25),
+        taxa_inativacao_pct: Number(d.taxa_inativacao_pct || 0),
+        retencao_antocianinas_pct: Number(d.retencao_antocianinas_pct || 100),
+        status_processo: d.status_processo || 'AGUARDANDO'
+      }));
       setHistorico(ordenado);
       if (ordenado.length > 0) setEstadoAtual(ordenado[ordenado.length - 1]);
     };
@@ -140,8 +149,16 @@ export default function DashboardDigitalTwin() {
         { event: 'INSERT', schema: 'public', table: 'estado_digital_twin' },
         (payload) => {
           if (!mounted || !payload.new) return;
-          setEstadoAtual(payload.new);
-          setHistorico((prev) => [...prev.slice(-39), payload.new]);
+          const p = {
+            tempo_decorrido_s: Number(payload.new.tempo_decorrido_s || 0),
+            temp_superficie_c: Number(payload.new.temp_superficie_c || 25),
+            temp_centro_c: Number(payload.new.temp_centro_c || 25),
+            taxa_inativacao_pct: Number(payload.new.taxa_inativacao_pct || 0),
+            retencao_antocianinas_pct: Number(payload.new.retencao_antocianinas_pct || 100),
+            status_processo: payload.new.status_processo || 'PROCESSANDO'
+          };
+          setEstadoAtual(p);
+          setHistorico((prev) => [...prev.slice(-39), p]);
         }
       )
       .subscribe((status, error) => {
@@ -161,6 +178,8 @@ export default function DashboardDigitalTwin() {
 
   const iniciarSimulacaoInterativa = () => {
     if (timerSimulacao.current) clearInterval(timerSimulacao.current);
+    setHistorico([]);
+    setEstadoAtual(estadoInicial);
     setEmSimulacao(true);
     setMostrarRelatorio(false);
     
@@ -170,19 +189,18 @@ export default function DashboardDigitalTwin() {
     let inativacao = 0.0;
     let retencao = 100.0;
 
-    setHistorico([]);
-    
     timerSimulacao.current = setInterval(() => {
       tempo += 2;
       tempSup = Math.min(82.5, +(25 + 57.5 * (1 - Math.exp(-tempo / 12))).toFixed(1));
-      tempCentro = Math.min(74.0, +(25 + 49.0 * (1 - Math.exp(-tempo / 22))).toFixed(1));
+      tempCentro = Math.min(74.5, +(25 + 49.5 * (1 - Math.exp(-tempo / 16))).toFixed(1));
       
       if (tempCentro > 55) {
-        const fator = Math.pow((tempCentro - 55) / 18, 2.5);
-        inativacao = Math.min(94.8, +(fator * 95).toFixed(1));
+        const fator = Math.min(1.0, Math.pow((tempCentro - 55) / 17, 2.0));
+        inativacao = Math.min(93.6, +(fator * 93.6).toFixed(1));
       }
       
-      retencao = Math.max(91.2, +(100 - (tempo * 0.22)).toFixed(1));
+      retencao = Math.max(91.2, +(100 - (tempo * 0.18)).toFixed(1));
+      const metaAtingida = inativacao >= 90.0;
 
       const novoPonto = {
         tempo_decorrido_s: tempo,
@@ -190,18 +208,18 @@ export default function DashboardDigitalTwin() {
         temp_centro_c: tempCentro,
         taxa_inativacao_pct: inativacao,
         retencao_antocianinas_pct: retencao,
-        status_processo: inativacao >= 90 ? 'OTIMIZADO_SUCESSO' : 'EM_AQUECIMENTO',
+        status_processo: metaAtingida ? 'CONFORMIDADE_ATINGIDA' : 'EM_AQUECIMENTO',
       };
 
       setEstadoAtual(novoPonto);
       setHistorico((prev) => [...prev.slice(-39), novoPonto]);
 
-      if (inativacao >= 90 || tempo >= 46) {
+      if (metaAtingida || tempo >= 54) {
         clearInterval(timerSimulacao.current);
         setEmSimulacao(false);
-        setTimeout(() => setMostrarRelatorio(true), 800);
+        setTimeout(() => setMostrarRelatorio(true), 600);
       }
-    }, 450);
+    }, 400);
   };
 
   const resetarSimulacao = () => {
@@ -288,7 +306,7 @@ export default function DashboardDigitalTwin() {
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-xs text-slate-300 leading-relaxed mb-6">
-              <strong>Parecer do Gêmeo Digital:</strong> O binómio tempo-temperatura aplicado atingiu a letalidade segura contra <em>Trypanosoma cruzi</em> no núcleo geométrico da baga sem exceder a taxa crítica de degradação das cianidinas na casca. Processo validado para despolpamento imediato.
+              <strong>Parecer do Gêmeo Digital:</strong> O binômio tempo-temperatura aplicado atingiu a letalidade segura contra <em>Trypanosoma cruzi</em> no núcleo geométrico da baga sem exceder a taxa crítica de degradação das cianidinas na casca. Processo validado para despolpamento imediato.
             </div>
 
             <div className="flex justify-end gap-3">
@@ -344,7 +362,7 @@ export default function DashboardDigitalTwin() {
               <span className="flex items-center gap-2.5">
                 <Activity className="h-4 w-4" /> Supervisório em Tempo Real
               </span>
-              {activeTab === 'dashboard' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'dashboard' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -358,7 +376,7 @@ export default function DashboardDigitalTwin() {
               <span className="flex items-center gap-2.5">
                 <ArrowRightLeft className="h-4 w-4 text-cyan-400" /> Comparativo com Convencional
               </span>
-              {activeTab === 'comparativo' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'comparativo' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -372,7 +390,7 @@ export default function DashboardDigitalTwin() {
               <span className="flex items-center gap-2.5">
                 <Scale className="h-4 w-4 text-amber-300" /> Sensibilidade de Calibres
               </span>
-              {activeTab === 'sensibilidade' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'sensibilidade' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -386,7 +404,7 @@ export default function DashboardDigitalTwin() {
               <span className="flex items-center gap-2.5">
                 <FileText className="h-4 w-4 text-emerald-400" /> Normas & Escopo TCC 1/2
               </span>
-              {activeTab === 'normas' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'normas' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -400,7 +418,7 @@ export default function DashboardDigitalTwin() {
               <span className="flex items-center gap-2.5">
                 <Flame className="h-4 w-4 text-amber-400" /> Branqueamento Convencional
               </span>
-              {activeTab === 'convencional' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'convencional' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -414,7 +432,7 @@ export default function DashboardDigitalTwin() {
               <span className="flex items-center gap-2.5">
                 <Leaf className="h-4 w-4 text-emerald-400" /> O Fruto do Açaí
               </span>
-              {activeTab === 'acai_info' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'acai_info' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -426,9 +444,9 @@ export default function DashboardDigitalTwin() {
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <BookOpen className="h-4 w-4" /> Modelo Físico & EDP
+                <BookOpen className="h-4 w-4 text-purple-300" /> Modelo Físico & EDP
               </span>
-              {activeTab === 'fisica' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'fisica' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -440,9 +458,9 @@ export default function DashboardDigitalTwin() {
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <Cpu className="h-4 w-4" /> Arquitetura & UML
+                <Cpu className="h-4 w-4 text-indigo-400" /> Arquitetura & UML
               </span>
-              {activeTab === 'arquitetura' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'arquitetura' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -454,9 +472,9 @@ export default function DashboardDigitalTwin() {
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <Sliders className="h-4 w-4" /> Parâmetros Termofísicos
+                <Sliders className="h-4 w-4 text-slate-300" /> Parâmetros Termofísicos
               </span>
-              {activeTab === 'parametros' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'parametros' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
 
             <button
@@ -468,9 +486,9 @@ export default function DashboardDigitalTwin() {
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <Database className="h-4 w-4" /> Dados & Histórico
+                <Database className="h-4 w-4 text-cyan-300" /> Dados & Histórico
               </span>
-              {activeTab === 'historico' && <ChevronRight className="h-3.5 w-3.5" />}
+              {activeTab === 'historico' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
           </nav>
         </div>
@@ -553,7 +571,7 @@ export default function DashboardDigitalTwin() {
                   value={formatarNumero(estadoAtual.taxa_inativacao_pct)}
                   unit="%"
                   color={{ bg: 'bg-emerald-500/10', text: 'text-emerald-400' }}
-                  extra="Meta Sanitária: > 90%"
+                  extra="Meta Sanitária SESPA: > 90%"
                 />
                 <Indicador
                   icon={Droplet}
@@ -578,12 +596,12 @@ export default function DashboardDigitalTwin() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={historico}>
                       <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                      <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" />
-                      <YAxis stroke="#64748b" unit="°C" domain={[20, 95]} />
+                      <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" fontSize={11} />
+                      <YAxis stroke="#64748b" unit="°C" domain={[20, 90]} ticks={[20, 30, 40, 50, 60, 70, 80, 90]} fontSize={11} type="number" />
                       <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
                       <Legend />
-                      <Line type="monotone" dataKey="temp_superficie_c" name="Superfície" stroke="#f43f5e" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="temp_centro_c" name="Centro (r=0)" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="temp_superficie_c" name="Superfície" stroke="#f43f5e" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="temp_centro_c" name="Centro (r=0)" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -600,12 +618,13 @@ export default function DashboardDigitalTwin() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={historico}>
                       <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                      <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" />
-                      <YAxis stroke="#64748b" unit="%" domain={[0, 100]} />
+                      <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" fontSize={11} />
+                      <YAxis stroke="#64748b" unit="%" domain={[0, 100]} ticks={[0, 25, 50, 75, 90, 100]} fontSize={11} type="number" />
                       <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
                       <Legend />
-                      <Line type="monotone" dataKey="taxa_inativacao_pct" name="Inativação POD (%)" stroke="#10b981" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="retencao_antocianinas_pct" name="Retenção Antocianinas (%)" stroke="#a855f7" strokeWidth={2} dot={false} />
+                      <ReferenceLine y={90} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta SESPA: 90%', fill: '#34d399', fontSize: 10, position: 'insideTopLeft' }} />
+                      <Line type="monotone" dataKey="taxa_inativacao_pct" name="Inativação POD (%)" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="retencao_antocianinas_pct" name="Retenção Antocianinas (%)" stroke="#a855f7" strokeWidth={2} dot={false} isAnimationActive={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -662,8 +681,8 @@ export default function DashboardDigitalTwin() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={dadosComparativos}>
                     <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                    <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" />
-                    <YAxis stroke="#64748b" unit="%" domain={[40, 100]} />
+                    <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" fontSize={11} />
+                    <YAxis stroke="#64748b" unit="%" domain={[40, 100]} fontSize={11} type="number" />
                     <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
                     <Legend />
                     <Line type="monotone" dataKey="retencao_twin" name="Digital Twin (Otimizado)" stroke="#a855f7" strokeWidth={2.5} dot={false} />
@@ -717,8 +736,8 @@ export default function DashboardDigitalTwin() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={dadosSensibilidade}>
                     <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                    <XAxis dataKey="tempo_s" stroke="#64748b" unit="s" />
-                    <YAxis stroke="#64748b" unit="°C" domain={[20, 85]} />
+                    <XAxis dataKey="tempo_s" stroke="#64748b" unit="s" fontSize={11} />
+                    <YAxis stroke="#64748b" unit="°C" domain={[20, 85]} fontSize={11} type="number" />
                     <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
                     <Legend />
                     <Line type="monotone" dataKey="calibre_12mm" name="Calibre Pequeno (12 mm)" stroke="#10b981" strokeWidth={2} dot={false} />
@@ -981,8 +1000,8 @@ export default function DashboardDigitalTwin() {
               </h3>
               <div className="rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-300 space-y-2 border border-slate-800">
                 <p className="text-purple-400">[1. Sensor / Mock] ──(HTTP POST / T_superficie)──&gt; [2. FastAPI Engine]</p>
-                <p className="text-indigo-400 pl-4">* Executa discretização de Fourier 1D (Δt = 1s, Δr = 0.7mm) [~8 ms]</p>
-                <p className="text-indigo-400 pl-4">* Calcula inativação de POD e antocianinas via Arrhenius [~1 ms]</p>
+                <p className="text-indigo-400 pl-4">• Executa discretização de Fourier 1D (Δt = 1s, Δr = 0.7mm) [~8 ms]</p>
+                <p className="text-indigo-400 pl-4">• Calcula inativação de POD e antocianinas via Arrhenius [~1 ms]</p>
                 <p className="text-emerald-400">[2. FastAPI Engine] ──(INSERT estado_digital_twin)──&gt; [3. Supabase DB]</p>
                 <p className="text-cyan-400">[3. Supabase DB] ──(WebSocket broadcast)──&gt; [4. React SCADA Frontend]</p>
                 <p className="text-slate-400 border-t border-slate-800/80 pt-2">Latência total do ciclo fechado: ~75 ms (compatível com controle térmico industrial).</p>
