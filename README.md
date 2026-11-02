@@ -1,3 +1,4 @@
+![AçaíThermal Twin SCADA](docs/assets/dashboard.png)
 # AçaíThermal Twin 4.0 🍇⚡
 
 > **Digital Twin para Simulação Termofísica e Otimização Cinética da Pasteurização do Açaí (*Euterpe oleracea*)**  
