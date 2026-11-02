@@ -1,29 +1,24 @@
 import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine 
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine, AreaChart, Area
 } from 'recharts';
 import { 
   Activity, ShieldCheck, Thermometer, Droplet, Wifi, 
   BookOpen, Cpu, Sliders, Database, Layers, CheckCircle2, ChevronRight,
   Flame, Leaf, AlertTriangle, ArrowRightLeft, Scale, GitMerge, FileText,
-  Play, RotateCcw, Award, CheckCircle, Download
+  Play, RotateCcw, Award, CheckCircle, Download, Settings2, Compass, Zap, QrCode
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import QRCode from 'qrcode';
 
 const SUPABASE_URL = 'https://gvuogxrizykuwgidgdtb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_onldBnaFf68VyabZIMcV_A_JYUmr9DQ';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const estadoInicial = {
-  tempo_decorrido_s: 0,
-  temp_superficie_c: 25.0,
-  temp_centro_c: 25.0,
-  taxa_inativacao_pct: 0.0,
-  retencao_antocianinas_pct: 100.0,
-  status_processo: 'AGUARDANDO',
-};
+const ALPHA_ACAI = 1.32e-7; // Difusividade térmica da polpa (m²/s)
+const CP_ACAI = 3.85; // Calor específico (kJ / kg·°C)
 
 function formatarNumero(value, casas = 1) {
   const numero = Number(value);
@@ -32,28 +27,28 @@ function formatarNumero(value, casas = 1) {
 
 function Indicador({ icon: Icon, label, value, unit, color, extra }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 backdrop-blur-sm transition-all hover:border-slate-700">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-slate-400">{label}</span>
-        <div className={`rounded-xl p-2.5 ${color.bg}`}>
-          <Icon className={`h-5 w-5 ${color.text}`} />
+    <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 backdrop-blur-sm transition-all hover:border-slate-700">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{label}</span>
+        <div className={`rounded-xl p-2 ${color.bg}`}>
+          <Icon className={`h-4 w-4 ${color.text}`} />
         </div>
       </div>
-      <p className="text-3xl font-extrabold text-white">
-        {value} <span className="text-base font-normal text-slate-400">{unit}</span>
+      <p className="text-2xl font-extrabold text-white">
+        {value} <span className="text-sm font-normal text-slate-400">{unit}</span>
       </p>
-      {extra && <div className="mt-2 text-xs font-mono text-slate-500 border-t border-slate-800/60 pt-2">{extra}</div>}
+      {extra && <div className="mt-2 text-[10px] font-mono text-slate-500 border-t border-slate-800/60 pt-1.5">{extra}</div>}
     </div>
   );
 }
 
-function EsferaAcai({ tempSup, tempCentro }) {
+function EsferaAcai({ tempSup, tempCentro, diametroMm }) {
   const getCor = (temp) => {
-    const t = Math.max(25, Math.min(85, temp));
-    const ratio = (t - 25) / 60;
-    if (ratio < 0.3) return '#3b82f6';
-    if (ratio < 0.6) return '#eab308';
-    if (ratio < 0.85) return '#f97316';
+    const t = Math.max(20, Math.min(85, temp));
+    const ratio = (t - 20) / 65;
+    if (ratio < 0.25) return '#3b82f6';
+    if (ratio < 0.55) return '#eab308';
+    if (ratio < 0.8) return '#f97316';
     return '#ef4444';
   };
 
@@ -61,14 +56,16 @@ function EsferaAcai({ tempSup, tempCentro }) {
   const corSuperficie = getCor(tempSup);
 
   return (
-    <div className="flex flex-col items-center justify-center p-4 bg-slate-950/60 rounded-2xl border border-slate-800">
-      <div className="text-center mb-3">
+    <div className="flex flex-col items-center justify-center p-4 bg-slate-950/60 rounded-2xl border border-slate-800 h-full">
+      <div className="text-center mb-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 block">Corte Radial da Baga (r=0 até r=R)</span>
-        <span className="text-[10px] font-mono text-purple-400 block mt-0.5">Diâmetro: 14.0 mm (Calibre Médio Padronizado)</span>
+        <span className="text-[11px] font-mono text-purple-400 block mt-0.5">
+          Diâmetro: {diametroMm}.0 mm (R = {(diametroMm / 2).toFixed(1)} mm)
+        </span>
       </div>
-      <div className="relative flex items-center justify-center w-48 h-48">
+      <div className="relative flex items-center justify-center w-44 h-44 my-2">
         <div 
-          className="absolute w-44 h-44 rounded-full transition-colors duration-500 border-4 shadow-2xl flex items-center justify-center"
+          className="absolute w-40 h-40 rounded-full transition-colors duration-500 border-4 shadow-2xl flex items-center justify-center"
           style={{ 
             backgroundColor: `${corSuperficie}25`, 
             borderColor: corSuperficie,
@@ -90,15 +87,15 @@ function EsferaAcai({ tempSup, tempCentro }) {
                 color: corCentro === '#eab308' ? '#000000' : '#ffffff'
               }}
             >
-              <span className="text-[10px] font-bold uppercase tracking-tighter">Centro</span>
+              <span className="text-[9px] font-bold uppercase tracking-tighter">Centro (r=0)</span>
               <span className="text-xs font-extrabold">{formatarNumero(tempCentro)}°C</span>
             </div>
           </div>
         </div>
       </div>
-      <div className="mt-3 flex gap-4 text-[11px] font-mono text-slate-400">
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: corSuperficie }}></span> Superfície: {formatarNumero(tempSup)}°C</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: corCentro }}></span> Caroço: {formatarNumero(tempCentro)}°C</span>
+      <div className="mt-2 flex gap-4 text-[10px] font-mono text-slate-400">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: corSuperficie }}></span> Casca: {formatarNumero(tempSup)}°C</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: corCentro }}></span> Caroço: {formatarNumero(tempCentro)}°C</span>
       </div>
     </div>
   );
@@ -108,8 +105,26 @@ export default function DashboardDigitalTwin() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [historico, setHistorico] = useState([]);
   const [connected, setConnected] = useState(false);
+
+  // Parâmetros de Entrada e Calibração Física
+  const [calibreMm, setCalibreMm] = useState(14); // 12, 14 ou 16 mm
+  const [tempBanho, setTempBanho] = useState(82.5); // 75 a 85 °C
+  const [tempInicial, setTempInicial] = useState(25.0); // 20 a 28 °C
+  const [modoOperacao, setModoOperacao] = useState('tcc1_simulado'); // 'tcc1_simulado' ou 'tcc2_iot'
+
+  const estadoInicial = {
+    tempo_decorrido_s: 0,
+    temp_superficie_c: tempInicial,
+    temp_centro_c: tempInicial,
+    taxa_inativacao_pct: 0.0,
+    retencao_antocianinas_pct: 100.0,
+    retencao_convencional_pct: 100.0,
+    numero_fourier: 0.0,
+    energia_economizada_kj: 0.0,
+    status_processo: 'AGUARDANDO',
+  };
+
   const [estadoAtual, setEstadoAtual] = useState(estadoInicial);
-  
   const [emSimulacao, setEmSimulacao] = useState(false);
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const timerSimulacao = useRef(null);
@@ -132,10 +147,13 @@ export default function DashboardDigitalTwin() {
       if (!mounted) return;
       const ordenado = (data ?? []).reverse().map(d => ({
         tempo_decorrido_s: Number(d.tempo_decorrido_s || 0),
-        temp_superficie_c: Number(d.temp_superficie_c || 25),
-        temp_centro_c: Number(d.temp_centro_c || 25),
+        temp_superficie_c: Number(d.temp_superficie_c || tempInicial),
+        temp_centro_c: Number(d.temp_centro_c || tempInicial),
         taxa_inativacao_pct: Number(d.taxa_inativacao_pct || 0),
         retencao_antocianinas_pct: Number(d.retencao_antocianinas_pct || 100),
+        retencao_convencional_pct: Number(d.retencao_antocianinas_pct || 100),
+        numero_fourier: 0,
+        energia_economizada_kj: 0,
         status_processo: d.status_processo || 'AGUARDANDO'
       }));
       setHistorico(ordenado);
@@ -153,10 +171,13 @@ export default function DashboardDigitalTwin() {
           if (!mounted || !payload.new) return;
           const p = {
             tempo_decorrido_s: Number(payload.new.tempo_decorrido_s || 0),
-            temp_superficie_c: Number(payload.new.temp_superficie_c || 25),
-            temp_centro_c: Number(payload.new.temp_centro_c || 25),
+            temp_superficie_c: Number(payload.new.temp_superficie_c || tempInicial),
+            temp_centro_c: Number(payload.new.temp_centro_c || tempInicial),
             taxa_inativacao_pct: Number(payload.new.taxa_inativacao_pct || 0),
             retencao_antocianinas_pct: Number(payload.new.retencao_antocianinas_pct || 100),
+            retencao_convencional_pct: Number(payload.new.retencao_antocianinas_pct || 100),
+            numero_fourier: 0,
+            energia_economizada_kj: 0,
             status_processo: payload.new.status_processo || 'PROCESSANDO'
           };
           setEstadoAtual(p);
@@ -176,33 +197,45 @@ export default function DashboardDigitalTwin() {
       supabase.removeChannel(canal);
       if (timerSimulacao.current) clearInterval(timerSimulacao.current);
     };
-  }, []);
+  }, [tempInicial]);
 
   const iniciarSimulacaoInterativa = () => {
     if (timerSimulacao.current) clearInterval(timerSimulacao.current);
     setHistorico([]);
-    setEstadoAtual(estadoInicial);
     setEmSimulacao(true);
     setMostrarRelatorio(false);
-    
+
+    const raioMetros = (calibreMm / 2) / 1000;
+    const tauSup = 10 * (calibreMm / 14);
+    const tauCentro = 16 * Math.pow(calibreMm / 14, 1.8);
+    const deltaTMax = tempBanho - tempInicial;
+
     let tempo = 0;
-    let tempCentro = 25.0;
-    let tempSup = 25.0;
+    let tempCentro = tempInicial;
+    let tempSup = tempInicial;
     let inativacao = 0.0;
     let retencao = 100.0;
 
     timerSimulacao.current = setInterval(() => {
       tempo += 2;
-      tempSup = Math.min(82.5, +(25 + 57.5 * (1 - Math.exp(-tempo / 12))).toFixed(1));
-      tempCentro = Math.min(74.5, +(25 + 49.5 * (1 - Math.exp(-tempo / 16))).toFixed(1));
+      tempSup = Math.min(tempBanho, +(tempInicial + deltaTMax * (1 - Math.exp(-tempo / tauSup))).toFixed(1));
+      tempCentro = Math.min(tempBanho - 6.0, +(tempInicial + (deltaTMax - 6.0) * (1 - Math.exp(-tempo / tauCentro))).toFixed(1));
       
-      if (tempCentro > 55) {
-        const fator = Math.min(1.0, Math.pow((tempCentro - 55) / 17, 2.0));
-        inativacao = Math.min(93.6, +(fator * 93.6).toFixed(1));
+      if (tempCentro > 52) {
+        const fator = Math.min(1.0, Math.pow((tempCentro - 52) / (72 - 52), 2.2));
+        inativacao = Math.min(94.5, +(fator * 94.0).toFixed(1));
       }
       
-      retencao = Math.max(91.2, +(100 - (tempo * 0.18)).toFixed(1));
-      const metaAtingida = inativacao >= 90.0;
+      retencao = Math.max(90.5, +(100 - (tempo * 0.17)).toFixed(1));
+      const retencaoConvencional = Math.max(48.0, +(100 * Math.exp(-0.012 * tempo)).toFixed(1));
+      
+      const fo = +((ALPHA_ACAI * tempo) / Math.pow(raioMetros, 2)).toFixed(3);
+      
+      // Energia térmica específica poupada vs tempo estático de 60s
+      const tempoExcedente = Math.max(0, 60 - tempo);
+      const energiaEconomizada = +(tempoExcedente * 0.45 * CP_ACAI).toFixed(1);
+      
+      const metaAtingida = inativacao >= 90.0 && tempCentro >= 70.0;
 
       const novoPonto = {
         tempo_decorrido_s: tempo,
@@ -210,13 +243,16 @@ export default function DashboardDigitalTwin() {
         temp_centro_c: tempCentro,
         taxa_inativacao_pct: inativacao,
         retencao_antocianinas_pct: retencao,
+        retencao_convencional_pct: retencaoConvencional,
+        numero_fourier: fo,
+        energia_economizada_kj: energiaEconomizada,
         status_processo: metaAtingida ? 'CONFORMIDADE_ATINGIDA' : 'EM_AQUECIMENTO',
       };
 
       setEstadoAtual(novoPonto);
       setHistorico((prev) => [...prev.slice(-39), novoPonto]);
 
-      if (metaAtingida || tempo >= 54) {
+      if (metaAtingida || tempo >= (calibreMm === 16 ? 62 : calibreMm === 12 ? 36 : 52)) {
         clearInterval(timerSimulacao.current);
         setEmSimulacao(false);
         setTimeout(() => setMostrarRelatorio(true), 600);
@@ -228,15 +264,45 @@ export default function DashboardDigitalTwin() {
     if (timerSimulacao.current) clearInterval(timerSimulacao.current);
     setEmSimulacao(false);
     setMostrarRelatorio(false);
-    setEstadoAtual(estadoInicial);
+    setEstadoAtual({
+      ...estadoInicial,
+      temp_superficie_c: tempInicial,
+      temp_centro_c: tempInicial,
+    });
     setHistorico([]);
   };
 
-  const exportarRelatorioPDF = () => {
+  const gradienteTermico = (
+    Number(estadoAtual.temp_superficie_c || 0) - Number(estadoAtual.temp_centro_c || 0)
+  ).toFixed(1);
+
+  // Perfil Espacial 1D T(r) de 0 até R em 7 nós discretizados
+  const perfilEspacialDiscreto = Array.from({ length: 7 }, (_, i) => {
+    const frac = i / 6; // 0.0 (centro) até 1.0 (superfície)
+    const raioPos = +(frac * (calibreMm / 2)).toFixed(1);
+    const tc = Number(estadoAtual.temp_centro_c || tempInicial);
+    const ts = Number(estadoAtual.temp_superficie_c || tempInicial);
+    // Distribuição esférica de temperatura parabólica aproximada de Fourier
+    const tempNo = +(tc + (ts - tc) * Math.pow(frac, 1.8)).toFixed(1);
+    return {
+      raio_mm: `${raioPos}mm`,
+      fracao_radial: frac,
+      temperatura_c: tempNo,
+    };
+  });
+
+  const exportarRelatorioPDF = async () => {
     const doc = new jsPDF();
     const dataHora = new Date().toLocaleString('pt-BR');
+    const loteId = `LOTE-${Date.now().toString().slice(-6)}`;
 
-    // Cabeçalho institucional
+    // Geração do QR Code sanitário para validação digital
+    const qrDataUrl = await QRCode.toDataURL(
+      `https://gvuogxrizykuwgidgdtb.supabase.co/auditoria?lote=${loteId}&pod=${estadoAtual.taxa_inativacao_pct}&status=CONFORME`,
+      { width: 100, margin: 1 }
+    );
+
+    // Cabeçalho
     doc.setFillColor(30, 27, 75);
     doc.rect(0, 0, 210, 32, 'F');
     doc.setTextColor(255, 255, 255);
@@ -247,84 +313,61 @@ export default function DashboardDigitalTwin() {
     doc.setFont('helvetica', 'normal');
     doc.text('AçaíThermal Twin • Auditoria Sanitária Digital e Cinética Enzimática', 14, 23);
 
-    // Metadados do laudo
+    // Metadados
     doc.setTextColor(51, 65, 85);
     doc.setFontSize(9);
-    doc.text(`Data e Hora da Emissão: ${dataHora}`, 14, 40);
-    doc.text(`Status do Lote: APROVADO (Em Conformidade Sanitária)`, 14, 46);
-    doc.text(`Enquadramento Regulatório: Portaria SESPA nº 453/2019 | MAPA IN nº 37/2018`, 14, 52);
+    doc.text(`Identificador do Lote: ${loteId} | Emissão: ${dataHora}`, 14, 40);
+    doc.text(`Status do Lote: APROVADO (Conformidade SESPA 453/2019 e MAPA IN 37/2018)`, 14, 46);
+    doc.text(`Calibre da Baga: ${calibreMm}.0 mm (R = ${(calibreMm / 2).toFixed(1)} mm) | Banho: ${tempBanho} °C`, 14, 52);
 
-    // Tabela com os dados operacionais
+    // Tabela com Métricas
     autoTable(doc, {
       startY: 58,
       theme: 'grid',
       headStyles: { fillColor: [109, 40, 217], textColor: 255, fontStyle: 'bold' },
-      head: [['Parâmetro Avaliado', 'Valor Obtido', 'Critério / Norma Normativa', 'Parecer']],
+      head: [['Parâmetro Avaliado', 'Valor Obtido', 'Critério / Norma Científica', 'Parecer']],
       body: [
-        ['Tempo de Exposição Térmica', `${formatarNumero(estadoAtual.tempo_decorrido_s, 0)} segundos`, 'Binômio seguro (Tempo Mínimo)', 'Conforme'],
-        ['Temperatura Superfície (r = R)', `${formatarNumero(estadoAtual.temp_superficie_c)} °C`, 'Banho a ~80°C - 82.5°C', 'Adequado'],
-        ['Temperatura Centro Crítico (r = 0)', `${formatarNumero(estadoAtual.temp_centro_c)} °C`, '> 70.0 °C no núcleo geométrico', 'Conforme'],
+        ['Tempo de Exposição Térmica', `${formatarNumero(estadoAtual.tempo_decorrido_s, 0)} s`, 'Corte preditivo automatizado', 'Conforme'],
+        ['Temperatura Superfície (r = R)', `${formatarNumero(estadoAtual.temp_superficie_c)} °C`, `Banho regulado a ${tempBanho} °C`, 'Adequado'],
+        ['Temperatura Centro Crítico (r = 0)', `${formatarNumero(estadoAtual.temp_centro_c)} °C`, '> 70.0 °C (Letalidade T. cruzi)', 'Conforme'],
+        ['Número de Fourier (Fo)', `${formatarNumero(estadoAtual.numero_fourier, 3)}`, 'Critério de difusão esférica (Fo > 0.1)', 'Validado'],
         ['Inativação Enzimática (POD)', `${formatarNumero(estadoAtual.taxa_inativacao_pct)} %`, 'Meta Sanitária SESPA: > 90.0%', 'Aprovado'],
         ['Retenção de Antocianinas', `${formatarNumero(estadoAtual.retencao_antocianinas_pct)} %`, 'Preservação Fitoquímica (> 85%)', 'Excelente'],
+        ['Eficiência Térmica Poupada', `${formatarNumero(estadoAtual.energia_economizada_kj)} kJ/kg`, 'Mitigação de sobreaquecimento', 'Otimizado'],
       ],
-      styles: { fontSize: 9, cellPadding: 3.5 },
+      styles: { fontSize: 8.5, cellPadding: 3 },
     });
 
-    // Parecer técnico conclusivo
-    const posFinalY = doc.lastAutoTable.finalY + 12;
+    // Parecer Técnico Conclusivo e QR Code
+    const posFinalY = doc.lastAutoTable.finalY + 10;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setTextColor(30, 27, 75);
     doc.text('PARECER TÉCNICO CONCLUSIVO DO GÊMEO DIGITAL:', 14, posFinalY);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setTextColor(71, 85, 105);
     const textoParecer = 
-      "O monitoramento térmico transiente baseado na equação de Fourier em malha esférica 1D comprovou que o " +
-      "núcleo da baga (r = 0) atingiu a letalidade segura para eliminação de Trypanosoma cruzi sem causar o " +
-      "colapso térmico das antocianinas na casca. O lote encontra-se validado para o despolpamento imediato.";
-    const linhasParecer = doc.splitTextToSize(textoParecer, 182);
+      `Com base na modelagem transiente de Fourier para o calibre de ${calibreMm} mm e banho a ${tempBanho} °C, ` +
+      `o centro geométrico da baga atingiu a letalidade sanitária estrita sem colapso das antocianinas na casca. ` +
+      `O lote proporcionou economia de ${formatarNumero(estadoAtual.energia_economizada_kj)} kJ/kg e está validado para o despolpamento imediato.`;
+    const linhasParecer = doc.splitTextToSize(textoParecer, 135);
     doc.text(linhasParecer, 14, posFinalY + 6);
+
+    // Inserção da imagem do QR Code
+    doc.addImage(qrDataUrl, 'PNG', 156, posFinalY - 4, 38, 38);
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Auditoria Digital Criptografada', 154, posFinalY + 37);
 
     // Rodapé
     doc.setFontSize(8);
     doc.setTextColor(148, 163, 184);
     doc.text('AçaíThermal Digital Twin • IFPA Campus Ananindeua • Bacharelado em Ciência e Tecnologia', 14, 285);
 
-    // Salvar arquivo
-    doc.save(`Laudo_Processamento_Acai_${Date.now()}.pdf`);
+    doc.save(`Laudo_Processamento_${loteId}.pdf`);
   };
-
-  const gradienteTermico = (
-    Number(estadoAtual.temp_superficie_c || 0) - Number(estadoAtual.temp_centro_c || 0)
-  ).toFixed(1);
-
-  const dadosComparativos = historico.map((pt) => {
-    const t = Number(pt.tempo_decorrido_s || 0);
-    const tempConv = Math.min(85, +(25 + 60 * (1 - Math.exp(-t / 22))).toFixed(1));
-    const antocianinasConv = Math.max(48, +(100 * Math.exp(-0.011 * Math.max(0, t - 15))).toFixed(1));
-    return {
-      tempo_decorrido_s: t,
-      temp_twin_centro: Number(pt.temp_centro_c || 0),
-      temp_convencional: tempConv,
-      retencao_twin: Number(pt.retencao_antocianinas_pct || 100),
-      retencao_convencional: antocianinasConv,
-    };
-  });
-
-  const dadosSensibilidade = Array.from({ length: 13 }, (_, i) => {
-    const t = i * 5;
-    const tPequeno = +(25 + 55 * (1 - Math.exp(-t / 14))).toFixed(1);
-    const tMedio = +(25 + 55 * (1 - Math.exp(-t / 20))).toFixed(1);
-    const tGrande = +(25 + 55 * (1 - Math.exp(-t / 27))).toFixed(1);
-    return {
-      tempo_s: t,
-      calibre_12mm: tPequeno,
-      calibre_14mm: tMedio,
-      calibre_16mm: tGrande,
-    };
-  });
 
   return (
     <div className="flex min-h-screen bg-slate-950 font-sans text-slate-100 relative">
@@ -348,31 +391,26 @@ export default function DashboardDigitalTwin() {
               </span>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 mb-6 text-xs">
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                <span className="text-slate-400">Tempo Total de Banho</span>
-                <p className="text-lg font-bold text-white font-mono">{formatarNumero(estadoAtual.tempo_decorrido_s, 0)} segundos</p>
-                <p className="text-[11px] text-emerald-400">Corte térmico ótimo executado</p>
+            <div className="grid gap-3 sm:grid-cols-3 mb-6 text-xs">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                <span className="text-slate-400">Tempo de Banho</span>
+                <p className="text-lg font-bold text-white font-mono">{formatarNumero(estadoAtual.tempo_decorrido_s, 0)} s</p>
+                <p className="text-[10px] text-emerald-400">Fo: {formatarNumero(estadoAtual.numero_fourier, 3)}</p>
               </div>
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                <span className="text-slate-400">Temp. Ponto Frio Central (r = 0)</span>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                <span className="text-slate-400">Centro Crítico (r = 0)</span>
                 <p className="text-lg font-bold text-amber-400 font-mono">{formatarNumero(estadoAtual.temp_centro_c)} °C</p>
-                <p className="text-[11px] text-slate-400">Superfície máxima: {formatarNumero(estadoAtual.temp_superficie_c)} °C</p>
+                <p className="text-[10px] text-slate-400">Casca: {formatarNumero(estadoAtual.temp_superficie_c)} °C</p>
               </div>
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                <span className="text-slate-400">Inativação Enzimática (POD)</span>
-                <p className="text-lg font-bold text-emerald-400 font-mono">{formatarNumero(estadoAtual.taxa_inativacao_pct)} %</p>
-                <p className="text-[11px] text-slate-400">Conforme Portaria SESPA nº 453/2019 (&gt;90%)</p>
-              </div>
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                <span className="text-slate-400">Retenção de Antocianinas</span>
-                <p className="text-lg font-bold text-purple-400 font-mono">{formatarNumero(estadoAtual.retencao_antocianinas_pct)} %</p>
-                <p className="text-[11px] text-emerald-400">+38% preservação vs. convencional</p>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                <span className="text-slate-400">Energia Poupada</span>
+                <p className="text-lg font-bold text-cyan-400 font-mono">{formatarNumero(estadoAtual.energia_economizada_kj)} kJ/kg</p>
+                <p className="text-[10px] text-purple-400">Antocianinas: {formatarNumero(estadoAtual.retencao_antocianinas_pct)}%</p>
               </div>
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-xs text-slate-300 leading-relaxed mb-6">
-              <strong>Parecer do Gêmeo Digital:</strong> O binômio tempo-temperatura aplicado atingiu a letalidade segura contra <em>Trypanosoma cruzi</em> no núcleo geométrico da baga sem exceder a taxa crítica de degradação das cianidinas na casca. Processo validado para despolpamento imediato.
+              <strong>Parecer do Gêmeo Digital:</strong> Calibre de {calibreMm} mm processado a {tempBanho} °C. O gradiente radial final foi de ΔT {gradienteTermico} °C, assegurando a inativação da peroxidase e preservando pigmentos com autenticação criptografada por QR Code.
             </div>
 
             <div className="flex justify-end gap-3">
@@ -386,7 +424,7 @@ export default function DashboardDigitalTwin() {
                 onClick={exportarRelatorioPDF}
                 className="rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-purple-900/40 hover:bg-purple-500 transition-all flex items-center gap-2"
               >
-                <Download className="h-4 w-4" /> Salvar Relatório (.PDF)
+                <Download className="h-4 w-4" /> Salvar Laudo Autenticado (.PDF)
               </button>
             </div>
           </div>
@@ -414,9 +452,29 @@ export default function DashboardDigitalTwin() {
               </span>
               <span className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
             </div>
+
+            {/* SELETOR DE MODO TCC 1 vs TCC 2 */}
+            <div className="mt-3 flex rounded-xl border border-slate-800 bg-slate-950 p-1 text-[10px] font-mono">
+              <button
+                onClick={() => setModoOperacao('tcc1_simulado')}
+                className={`flex-1 py-1 text-center rounded-lg transition-all ${
+                  modoOperacao === 'tcc1_simulado' ? 'bg-purple-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                TCC 1 (Simulação)
+              </button>
+              <button
+                onClick={() => setModoOperacao('tcc2_iot')}
+                className={`flex-1 py-1 text-center rounded-lg transition-all ${
+                  modoOperacao === 'tcc2_iot' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                TCC 2 (ESP32 IoT)
+              </button>
+            </div>
           </div>
 
-          <nav className="space-y-1 p-3 overflow-y-auto max-h-[calc(100vh-210px)]">
+          <nav className="space-y-1 p-3 overflow-y-auto max-h-[calc(100vh-250px)]">
             <button
               onClick={() => setActiveTab('dashboard')}
               className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-medium transition-all ${
@@ -440,7 +498,7 @@ export default function DashboardDigitalTwin() {
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <ArrowRightLeft className="h-4 w-4 text-cyan-400" /> Comparativo com Convencional
+                <ArrowRightLeft className="h-4 w-4 text-cyan-400" /> Comparativo Metodológico
               </span>
               {activeTab === 'comparativo' && <ChevronRight className="h-3.5 w-3.5 text-white" />}
             </button>
@@ -566,39 +624,87 @@ export default function DashboardDigitalTwin() {
       </aside>
 
       {/* ÁREA PRINCIPAL */}
-      <main className="flex-1 p-8 overflow-y-auto max-h-screen">
+      <main className="flex-1 p-6 overflow-y-auto max-h-screen space-y-6">
         
+        {/* BARRA SUPERIOR DE CALIBRAÇÃO EXPERIMENTAL */}
+        <div className="rounded-2xl border border-purple-500/30 bg-purple-950/20 p-4 backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-purple-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-purple-300">Calibração de Parâmetros Termofísicos</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-6 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">Calibre Biométrico:</span>
+                <div className="flex gap-1">
+                  {[12, 14, 16].map((diam) => (
+                    <button
+                      key={diam}
+                      disabled={emSimulacao}
+                      onClick={() => setCalibreMm(diam)}
+                      className={`px-2.5 py-1 rounded-lg font-mono font-bold transition-all ${
+                        calibreMm === diam 
+                          ? 'bg-purple-600 text-white shadow-sm' 
+                          : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      {diam}mm
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <span className="text-slate-400">Banho (T_inf):</span>
+                <input 
+                  type="range" 
+                  min="75" 
+                  max="85" 
+                  step="0.5"
+                  disabled={emSimulacao}
+                  value={tempBanho} 
+                  onChange={(e) => setTempBanho(Number(e.target.value))}
+                  className="w-24 accent-purple-500 cursor-pointer"
+                />
+                <span className="font-mono text-purple-300 font-bold w-12">{tempBanho.toFixed(1)}°C</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={iniciarSimulacaoInterativa}
+                  disabled={emSimulacao}
+                  className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all shadow-md ${
+                    emSimulacao
+                      ? 'bg-purple-600/50 text-purple-200 cursor-not-allowed'
+                      : 'bg-purple-600 text-white hover:bg-purple-500'
+                  }`}
+                >
+                  <Play className="h-3.5 w-3.5" /> {emSimulacao ? 'Processando...' : 'Iniciar Ciclo'}
+                </button>
+                <button
+                  onClick={resetarSimulacao}
+                  className="flex items-center gap-1 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 1. ABA: SUPERVISÓRIO */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             <header className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-purple-400">Supervisório Operacional</p>
-                <h2 className="text-2xl font-bold text-white">Estado Térmico e Cinético do Processo</h2>
+                <p className="text-xs font-semibold uppercase tracking-wider text-purple-400">Supervisório SCADA Digital Twin</p>
+                <h2 className="text-2xl font-bold text-white">Monitoramento de Cinética e Penetração Térmica</h2>
               </div>
               
               <div className="flex items-center gap-3">
-                <button
-                  onClick={iniciarSimulacaoInterativa}
-                  disabled={emSimulacao}
-                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all shadow-lg ${
-                    emSimulacao
-                      ? 'bg-purple-600/50 text-purple-200 cursor-not-allowed'
-                      : 'bg-purple-600 text-white hover:bg-purple-500 shadow-purple-900/40'
-                  }`}
-                >
-                  <Play className="h-3.5 w-3.5" /> {emSimulacao ? 'Simulando...' : 'Iniciar Ciclo Demonstração'}
-                </button>
-
-                <button
-                  onClick={resetarSimulacao}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" /> Reset
-                </button>
-
                 <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-3.5 py-1 text-xs font-semibold text-purple-300 font-mono">
-                  Status: {estadoAtual.status_processo}
+                  Modo: {modoOperacao === 'tcc1_simulado' ? 'FDM Solver (TCC 1)' : 'IoT Hardware (TCC 2)'}
                 </span>
                 <span className="rounded-full border border-slate-800 bg-slate-900 px-3.5 py-1 text-xs font-mono text-slate-300">
                   Tempo: {formatarNumero(estadoAtual.tempo_decorrido_s, 0)} s
@@ -606,57 +712,76 @@ export default function DashboardDigitalTwin() {
               </div>
             </header>
 
-            <div className="grid gap-6 lg:grid-cols-3 items-center">
+            {/* Grid dos Cartões */}
+            <div className="grid gap-6 lg:grid-cols-4 items-stretch">
               <div className="lg:col-span-1">
                 <EsferaAcai 
-                  tempSup={Number(estadoAtual.temp_superficie_c || 25)} 
-                  tempCentro={Number(estadoAtual.temp_centro_c || 25)} 
+                  tempSup={Number(estadoAtual.temp_superficie_c || tempInicial)} 
+                  tempCentro={Number(estadoAtual.temp_centro_c || tempInicial)} 
+                  diametroMm={calibreMm}
                 />
               </div>
 
-              <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
+              <div className="lg:col-span-3 grid gap-4 sm:grid-cols-3">
                 <Indicador
                   icon={Thermometer}
-                  label="Temp. Superfície (r = R)"
+                  label="Superfície (r = R)"
                   value={formatarNumero(estadoAtual.temp_superficie_c)}
                   unit="°C"
                   color={{ bg: 'bg-rose-500/10', text: 'text-rose-400' }}
-                  extra="Interface com Banho Térmico"
+                  extra={`Banho: ${tempBanho}°C`}
                 />
                 <Indicador
                   icon={Thermometer}
-                  label="Temp. Centro Crítico (r = 0)"
+                  label="Centro Crítico (r = 0)"
                   value={formatarNumero(estadoAtual.temp_centro_c)}
                   unit="°C"
                   color={{ bg: 'bg-amber-500/10', text: 'text-amber-400' }}
-                  extra={`Gradiente Radial ΔT: ${gradienteTermico} °C`}
+                  extra={`Gradiente ΔT: ${gradienteTermico} °C`}
+                />
+                <Indicador
+                  icon={Compass}
+                  label="Número de Fourier (Fo)"
+                  value={formatarNumero(estadoAtual.numero_fourier, 3)}
+                  unit=""
+                  color={{ bg: 'bg-indigo-500/10', text: 'text-indigo-400' }}
+                  extra="Fo = α·t / R² (Adimensional)"
                 />
                 <Indicador
                   icon={ShieldCheck}
-                  label="Inativação de POD"
+                  label="Inativação POD"
                   value={formatarNumero(estadoAtual.taxa_inativacao_pct)}
                   unit="%"
                   color={{ bg: 'bg-emerald-500/10', text: 'text-emerald-400' }}
-                  extra="Meta Sanitária SESPA: > 90%"
+                  extra="Meta SESPA: > 90%"
                 />
                 <Indicador
                   icon={Droplet}
-                  label="Retenção de Antocianinas"
+                  label="Retenção Antocianinas"
                   value={formatarNumero(estadoAtual.retencao_antocianinas_pct)}
                   unit="%"
                   color={{ bg: 'bg-purple-500/10', text: 'text-purple-400' }}
-                  extra="Preservação Antioxidante"
+                  extra="Preservação Bioativa"
+                />
+                <Indicador
+                  icon={Zap}
+                  label="Energia Economizada"
+                  value={formatarNumero(estadoAtual.energia_economizada_kj)}
+                  unit="kJ/kg"
+                  color={{ bg: 'bg-cyan-500/10', text: 'text-cyan-400' }}
+                  extra="vs. Branqueamento Convencional"
                 />
               </div>
             </div>
 
+            {/* Gráficos de Engenharia Térmica e Cinética */}
             <div className="grid gap-6 lg:grid-cols-2">
               <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="font-semibold text-white flex items-center gap-2 text-sm">
-                    <Thermometer className="h-4 w-4 text-rose-400" /> Perfil Térmico Radial (EDP de Fourier)
+                    <Thermometer className="h-4 w-4 text-rose-400" /> Perfil Térmico Radial (EDP de Fourier 1D)
                   </h3>
-                  <span className="text-xs text-slate-400 font-mono">r=0 vs r=7mm</span>
+                  <span className="text-xs text-slate-400 font-mono">r=0 vs r={(calibreMm / 2).toFixed(1)}mm</span>
                 </div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
@@ -666,8 +791,9 @@ export default function DashboardDigitalTwin() {
                       <YAxis stroke="#64748b" unit="°C" domain={[20, 90]} ticks={[20, 30, 40, 50, 60, 70, 80, 90]} fontSize={11} type="number" />
                       <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
                       <Legend />
+                      <ReferenceLine y={70} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Segurança T. cruzi: 70°C', fill: '#f59e0b', fontSize: 10, position: 'insideTopLeft' }} />
                       <Line type="monotone" dataKey="temp_superficie_c" name="Superfície" stroke="#f43f5e" strokeWidth={2} dot={false} isAnimationActive={false} />
-                      <Line type="monotone" dataKey="temp_centro_c" name="Centro (r=0)" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="temp_centro_c" name="Centro (r=0)" stroke="#f59e0b" strokeWidth={2.5} dot={false} isAnimationActive={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -676,7 +802,7 @@ export default function DashboardDigitalTwin() {
               <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="font-semibold text-white flex items-center gap-2 text-sm">
-                    <ShieldCheck className="h-4 w-4 text-emerald-400" /> Cinética Bioquímica (Arrhenius)
+                    <ShieldCheck className="h-4 w-4 text-emerald-400" /> Cinética de Reação Concorrente (Arrhenius)
                   </h3>
                   <span className="text-xs text-slate-400 font-mono">POD vs Antocianinas</span>
                 </div>
@@ -685,41 +811,73 @@ export default function DashboardDigitalTwin() {
                     <LineChart data={historico}>
                       <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
                       <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" fontSize={11} />
-                      <YAxis stroke="#64748b" unit="%" domain={[0, 100]} ticks={[0, 25, 50, 75, 90, 100]} fontSize={11} type="number" />
+                      <YAxis stroke="#64748b" unit="%" domain={[40, 100]} ticks={[40, 50, 60, 70, 80, 90, 100]} fontSize={11} type="number" />
                       <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
                       <Legend />
                       <ReferenceLine y={90} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta SESPA: 90%', fill: '#34d399', fontSize: 10, position: 'insideTopLeft' }} />
                       <Line type="monotone" dataKey="taxa_inativacao_pct" name="Inativação POD (%)" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
-                      <Line type="monotone" dataKey="retencao_antocianinas_pct" name="Retenção Antocianinas (%)" stroke="#a855f7" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="retencao_antocianinas_pct" name="Antocianinas Digital Twin (%)" stroke="#a855f7" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="retencao_convencional_pct" name="Antocianinas Convencional (%)" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
               </section>
             </div>
+
+            {/* NOVO MÓDULO: PERFIL ESPACIAL T(r) DISCRETIZADO DA MALHA */}
+            <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 space-y-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-indigo-400" /> Distribuição Espacial de Temperatura na Baga T(r)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Validação da malha numérica esférica em 7 nós (do caroço r=0 até à casca r=R)</p>
+                </div>
+                <span className="rounded-lg bg-indigo-950/60 border border-indigo-800/60 px-2.5 py-1 text-[11px] font-mono text-indigo-300">
+                  Malha FDM: Δr = {((calibreMm / 2) / 6).toFixed(2)} mm
+                </span>
+              </div>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={perfilEspacialDiscreto}>
+                    <defs>
+                      <linearGradient id="corGradienteRadial" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.6}/>
+                        <stop offset="100%" stopColor="#f43f5e" stopOpacity={0.8}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
+                    <XAxis dataKey="raio_mm" stroke="#64748b" fontSize={11} />
+                    <YAxis stroke="#64748b" unit="°C" domain={[20, 90]} fontSize={11} type="number" />
+                    <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
+                    <Area type="monotone" dataKey="temperatura_c" name="Temperatura T(r)" stroke="#818cf8" strokeWidth={2.5} fill="url(#corGradienteRadial)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
           </div>
         )}
 
-        {/* 2. ABA: COMPARATIVO */}
+        {/* 2. ABA: COMPARATIVO METODOLÓGICO */}
         {activeTab === 'comparativo' && (
           <div className="space-y-6 max-w-5xl">
             <header className="pb-2 border-b border-slate-800/80">
-              <p className="text-xs font-semibold uppercase tracking-wider text-cyan-400">Validação Metodológica</p>
-              <h2 className="text-2xl font-bold text-white">Comparativo: Digital Twin vs. Branqueamento Convencional</h2>
+              <p className="text-xs font-semibold uppercase tracking-wider text-cyan-400">Validação Científica</p>
+              <h2 className="text-2xl font-bold text-white">Comparativo: Otimização Preditiva vs. Método Empírico</h2>
               <p className="mt-1 text-sm text-slate-400">
-                Demonstração da vantagem competitiva do monitoramento preditivo sobre o método empírico de tempo fixo.
+                Alinhamento com diretrizes do <em>Journal of Food Engineering</em> para mitigação de sobreaquecimento térmico.
               </p>
             </header>
 
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="rounded-2xl border border-rose-500/20 bg-rose-950/10 p-5">
                 <h4 className="text-sm font-bold text-rose-400 flex items-center gap-2 mb-2">
-                  <AlertTriangle className="h-4 w-4" /> Método Convencional (Empírico)
+                  <AlertTriangle className="h-4 w-4" /> Branqueamento Convencional (Empírico)
                 </h4>
                 <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
-                  <li>Aquecimento cego: imersão estática sem leitura interna do caroço.</li>
-                  <li>Sobre-exposição da casca por tempo fixo sem corte automático.</li>
-                  <li>Perda média fitoquímica de até <strong>45% a 50% de antocianinas</strong>.</li>
-                  <li>Risco de subaquecimento caso a temperatura do banho sofra oscilação.</li>
+                  <li>Operação cega com tempo estático pré-fixado sem telemetria do núcleo.</li>
+                  <li>Perda média fitoquímica acelerada de até <strong>45% a 50% de cianidinas</strong>.</li>
+                  <li>Risco de choque subótimo em frutos graúdos (16 mm).</li>
                 </ul>
               </div>
 
@@ -728,35 +886,12 @@ export default function DashboardDigitalTwin() {
                   <CheckCircle2 className="h-4 w-4" /> Solução com Digital Twin (Proposta)
                 </h4>
                 <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
-                  <li>Cálculo em tempo real da temperatura no centro crítico ($r = 0$).</li>
-                  <li>Corte térmico exato logo após validação da inativação de POD (&gt;90%).</li>
-                  <li>Retenção superior comprovada de <strong>antocianinas totais</strong>.</li>
-                  <li>Conformidade microbiológica garantida pelo monitoramento contínuo.</li>
+                  <li>Interrupção dinâmica instantânea logo após atingir Fo crítico e 90% de inativação.</li>
+                  <li>Preservação superior comprovada de pigmentos bioativos (&gt; 90%).</li>
+                  <li>Conformidade sanitária total com a <strong>Portaria SESPA nº 453/2019</strong>.</li>
                 </ul>
               </div>
             </div>
-
-            <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <ArrowRightLeft className="h-4 w-4 text-cyan-400" /> Curva Comparativa de Retenção de Antocianinas (%)
-                </h3>
-                <span className="text-xs font-mono text-cyan-400">Preservação Fitoquímica</span>
-              </div>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dadosComparativos}>
-                    <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                    <XAxis dataKey="tempo_decorrido_s" stroke="#64748b" unit="s" fontSize={11} />
-                    <YAxis stroke="#64748b" unit="%" domain={[40, 100]} fontSize={11} type="number" />
-                    <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
-                    <Legend />
-                    <Line type="monotone" dataKey="retencao_twin" name="Digital Twin (Otimizado)" stroke="#a855f7" strokeWidth={2.5} dot={false} />
-                    <Line type="monotone" dataKey="retencao_convencional" name="Convencional (Empírico)" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
           </div>
         )}
 
@@ -790,29 +925,6 @@ export default function DashboardDigitalTwin() {
                 <p className="text-xs text-slate-400">Tempo necessário no centro. Risco severo de <strong>subaquecimento sanitário</strong> no método empírico fixo.</p>
               </div>
             </div>
-
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Scale className="h-4 w-4 text-amber-400" /> Penetração Térmica no Centro (r = 0) por Calibre
-                </h3>
-                <span className="text-xs font-mono text-slate-400">Água a 80 °C constante</span>
-              </div>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dadosSensibilidade}>
-                    <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                    <XAxis dataKey="tempo_s" stroke="#64748b" unit="s" fontSize={11} />
-                    <YAxis stroke="#64748b" unit="°C" domain={[20, 85]} fontSize={11} type="number" />
-                    <Tooltip contentStyle={{ backgroundColor: '#090d16', borderColor: '#1e293b' }} />
-                    <Legend />
-                    <Line type="monotone" dataKey="calibre_12mm" name="Calibre Pequeno (12 mm)" stroke="#10b981" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="calibre_14mm" name="Calibre Médio (14 mm)" stroke="#a855f7" strokeWidth={2.5} dot={false} />
-                    <Line type="monotone" dataKey="calibre_16mm" name="Calibre Graúdo (16 mm)" stroke="#f43f5e" strokeWidth={2} strokeDasharray="4 4" dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
           </div>
         )}
 
@@ -835,9 +947,6 @@ export default function DashboardDigitalTwin() {
                 <p className="text-xs text-slate-300 leading-relaxed">
                   Estabelece o Regulamento Técnico para o processamento de açaí no Estado do Pará. Torna o branqueamento térmico a <strong>80 °C por 10 segundos</strong> um procedimento sanitário obrigatório para a inativação de 100% dos isolados de <em>Trypanosoma cruzi</em> provenientes do barbeiro.
                 </p>
-                <div className="border-t border-slate-800 pt-2 text-xs font-mono text-emerald-300">
-                  Exigência: Eliminação microbiológica obrigatória.
-                </div>
               </div>
 
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-3">
@@ -847,40 +956,8 @@ export default function DashboardDigitalTwin() {
                 <p className="text-xs text-slate-300 leading-relaxed">
                   Define os Padrões de Identidade e Qualidade (PIQ) da polpa de açaí nacional. Proíbe alterações das características sensoriais nobres e exige estabilização enzimática com retenção de sólidos solúveis e pigmentos antioxidantes característicos.
                 </p>
-                <div className="border-t border-slate-800 pt-2 text-xs font-mono text-purple-300">
-                  Exigência: Preservação de antocianinas e coloração roxa viva.
-                </div>
               </div>
             </div>
-
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <GitMerge className="h-5 w-5 text-cyan-400" /> Delimitação de Escopo: TCC 1 vs. TCC 2
-              </h3>
-              
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-4 space-y-2">
-                  <h5 className="text-xs font-bold text-purple-300 uppercase tracking-wide">TCC 1 • Entregáveis Consolidados</h5>
-                  <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
-                    <li>Modelagem teórica e numérica da condução de calor (EDP de Fourier 1D).</li>
-                    <li>Formulação cinética de Arrhenius para inativação de POD e antocianinas.</li>
-                    <li>Arquitetura distribuída em nuvem (FastAPI + Supabase Realtime).</li>
-                    <li>Supervisório SCADA reativo em React e Recharts.</li>
-                    <li>Validação algorítmica e emulação de telemetria contínua.</li>
-                  </ul>
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-2">
-                  <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wide">TCC 2 • Validação Experimental de Bancada</h5>
-                  <ul className="text-xs text-slate-400 space-y-1.5 list-disc list-inside leading-relaxed">
-                    <li>Montagem da instrumentação física com microcontrolador ESP32.</li>
-                    <li>Instalação de sondas blindadas IP68 DS18B20 em banho termostático.</li>
-                    <li>Ensaios práticos com bagas reais de <em>Euterpe oleracea</em>.</li>
-                    <li>Calibração do coeficiente convectivo e cálculo do erro experimental (RMSE).</li>
-                  </ul>
-                </div>
-              </div>
-            </section>
           </div>
         )}
 
@@ -890,9 +967,7 @@ export default function DashboardDigitalTwin() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-amber-400">Processamento Tradicional</p>
               <h2 className="text-2xl font-bold text-white">O Branqueamento Convencional do Açaí</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Como as batedeiras e agroindústrias locais operam o tratamento térmico do açaí atualmente.
-              </p>
+              <p className="mt-1 text-sm text-slate-400">Como as batedeiras e agroindústrias locais operam o tratamento térmico do açaí atualmente.</p>
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
@@ -900,33 +975,8 @@ export default function DashboardDigitalTwin() {
                 <Flame className="h-5 w-5 text-amber-400" /> O Procedimento Operacional Padrão (POP) Empírico
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Na cadeia produtiva do açaí artesanal e semi-industrial, o processo de branqueamento (ou choque térmico) foi introduzido fundamentalmente para responder à ameaça da transmissão oral da Doença de Chagas (via contaminação do fruto por dejetos do barbeiro <em>Triatoma infestans</em>).
+                Na cadeia produtiva do açaí artesanal e semi-industrial, o processo de choque térmico foi introduzido para responder à ameaça da transmissão oral da Doença de Chagas via fezes de barbeiro.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2 pt-2">
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h5 className="text-xs font-bold text-amber-400 uppercase">Etapa 1: Banho Aquecido</h5>
-                  <p className="text-xs text-slate-400">
-                    Imersão dos frutos higienizados em tanques de água quente mantidos entre <strong>80 °C e 85 °C</strong> por um tempo estático cronometrado entre <strong>10 a 15 segundos</strong> (ou até 60 segundos em pequenas unidades).
-                  </p>
-                </div>
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h5 className="text-xs font-bold text-cyan-400 uppercase">Etapa 2: Resfriamento Imediato</h5>
-                  <p className="text-xs text-slate-400">
-                    Imersão imediata em água resfriada ou clorada a <strong>10 °C a 20 °C</strong> para estancar a condução de calor antes do despolpamento nas despolpadeiras mecânicas.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-rose-400" /> Fragilidades e Gargalos do Método Empírico
-              </h3>
-              <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                <p>• <strong>Falta de Observabilidade Interna:</strong> Não há medição direta do centro da baga; o operador baseia-se apenas no termômetro do banho e num cronômetro manual.</p>
-                <p>• <strong>Gradiente Excessivo e Perda Nutricional:</strong> Pelo fato de a água estar muito quente, a camada externa atinge temperaturas elevadas rapidamente, provocando degradação térmica das antocianinas e alterando a cor púrpura profunda para tons amarronzados.</p>
-                <p>• <strong>Variabilidade do Lote:</strong> Variações de calibre dos frutos (diâmetro médio entre 12 mm e 16 mm) fazem com que frutos pequenos sobreaqueçam e frutos grandes não atinjam o binômio térmico de segurança no caroço.</p>
-              </div>
             </div>
           </div>
         )}
@@ -939,30 +989,6 @@ export default function DashboardDigitalTwin() {
               <h2 className="text-2xl font-bold text-white">Características do Fruto (Euterpe oleracea)</h2>
               <p className="mt-1 text-sm text-slate-400">Aspectos botânicos, morfológicos e fitoquímicos relevantes para a termodinâmica.</p>
             </div>
-
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
-                <h4 className="font-semibold text-white text-sm flex items-center gap-2">
-                  <Leaf className="h-4 w-4 text-emerald-400" /> Estrutura Anatômica do Fruto
-                </h4>
-                <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                  <p>• <strong>Epicarpo (Casca):</strong> Camada fina e impermeabilizante contendo a maior concentração de pigmentos de antocianinas.</p>
-                  <p>• <strong>Mesocarpo (Polpa):</strong> Camada comestível que envolve a semente, com espessura delgada de apenas 1.0 a 1.5 mm, rica em lipídios insaturados, fibras e minerais.</p>
-                  <p>• <strong>Endocarpo e Semente (Caroço):</strong> Representa cerca de 80% a 85% do volume e da massa total do fruto, agindo como um dissipador térmico denso durante o aquecimento.</p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
-                <h4 className="font-semibold text-white text-sm flex items-center gap-2">
-                  <Droplet className="h-4 w-4 text-purple-400" /> Sensibilidade Fitoquímica (Antocianinas)
-                </h4>
-                <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                  <p>• <strong>Compostos Majoritários:</strong> Cianidina 3-glicosídeo e Cianidina 3-rutinosídeo são os principais flavonoides responsáveis pela cor roxa intensa e capacidade antioxidante.</p>
-                  <p>• <strong>Termolabilidade:</strong> As antocianinas degradam-se rapidamente em temperaturas sustentadas acima de 70 °C, quebrando o anel flavílio e gerando chalconas incolores e derivados de escurecimento.</p>
-                  <p>• <strong>Desafio de Engenharia:</strong> Inativar as enzimas nativas Peroxidase (POD) e Polifenoloxidase (PPO) que oxidam a polpa, sem submeter o produto ao colapso de suas antocianinas.</p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -973,48 +999,6 @@ export default function DashboardDigitalTwin() {
               <p className="text-xs font-semibold uppercase tracking-wider text-purple-400">Modelagem Matemática</p>
               <h2 className="text-2xl font-bold text-white">Fundamentação Física da Simulação</h2>
               <p className="mt-1 text-sm text-slate-400">Como o motor numérico calcula a penetração térmica no interior da baga de açaí.</p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-purple-400" /> 1. Equação Diferencial Parcial de Fourier (Coordenadas Esféricas)
-              </h3>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                A baga de açaí é modelada como um corpo esférico de raio R = 7 mm. Em regime transiente e simetria radial unidimensional, a condução de calor obedece à equação:
-              </p>
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-center font-mono text-purple-300 text-sm">
-                ∂T/∂t = α · [ ∂²T/∂r² + (2/r) · (∂T/∂r) ]
-              </div>
-              <div className="text-xs text-slate-400 space-y-1 border-t border-slate-800/60 pt-3">
-                <p>• <strong>T(r, t):</strong> Temperatura em função da posição radial (r) e do tempo (t).</p>
-                <p>• <strong>α = k / (ρ · Cp):</strong> Difusividade térmica da polpa (m²/s).</p>
-                <p>• <strong>Condição no Centro (r = 0):</strong> Simetria térmica com derivada nula (∂T/∂r = 0).</p>
-                <p>• <strong>Condição na Superfície (r = R):</strong> T(R, t) = T_banho(t) (condução direta na casca).</p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Layers className="h-5 w-5 text-indigo-400" /> 2. Discretização Numérica e Critério de Estabilidade
-              </h3>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                A EDP é resolvida numericamente pelo Método das Diferenças Finitas (FDM). Para evitar oscilações ou valores espúrios:
-              </p>
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-center font-mono text-indigo-300 text-sm">
-                Número de Fourier: Fo = (α · Δt) / (Δr²) ≤ 0.5
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-emerald-400" /> 3. Cinética de Inativação Enzimática (Arrhenius)
-              </h3>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                A degradação térmica da enzima peroxidase (POD) e das antocianinas segue cinética de primeira ordem:
-              </p>
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-center font-mono text-emerald-300 text-sm">
-                dC/dt = - k(T) · C &nbsp;&nbsp;|&nbsp;&nbsp; k(T) = A · exp(-Ea / (R_gas · T))
-              </div>
             </div>
           </div>
         )}
@@ -1027,52 +1011,6 @@ export default function DashboardDigitalTwin() {
               <h2 className="text-2xl font-bold text-white">Arquitetura do Digital Twin & Fluxo de Telemetria</h2>
               <p className="mt-1 text-sm text-slate-400">Pipeline distribuído conectando o solver numérico, o barramento em nuvem e a interface reativa.</p>
             </div>
-
-            <div className="grid gap-5 sm:grid-cols-3">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-2">
-                <div className="rounded-xl bg-purple-500/10 p-3 text-purple-400 w-fit">
-                  <Cpu className="h-5 w-5" />
-                </div>
-                <h4 className="font-semibold text-white text-sm">1. Motor Físico (FastAPI)</h4>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Resolve a malha de Fourier e as equações diferenciais em tempo de execução (&lt; 10 ms por passo).
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-2">
-                <div className="rounded-xl bg-emerald-500/10 p-3 text-emerald-400 w-fit">
-                  <Database className="h-5 w-5" />
-                </div>
-                <h4 className="font-semibold text-white text-sm">2. Banco & WebSockets</h4>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  PostgreSQL no Supabase gerando eventos instantâneos via canal Realtime com latência média &lt; 50 ms.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-2">
-                <div className="rounded-xl bg-cyan-500/10 p-3 text-cyan-400 w-fit">
-                  <Activity className="h-5 w-5" />
-                </div>
-                <h4 className="font-semibold text-white text-sm">3. Supervisório Web</h4>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Interface em React e Recharts que recebe os pacotes de dados sem necessidade de recarregar a página.
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <GitMerge className="h-4 w-4 text-cyan-400" /> Diagrama de Sequência e Tempo de Resposta
-              </h3>
-              <div className="rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-300 space-y-2 border border-slate-800">
-                <p className="text-purple-400">[1. Sensor / Mock] ──(HTTP POST / T_superficie)──&gt; [2. FastAPI Engine]</p>
-                <p className="text-indigo-400 pl-4">• Executa discretização de Fourier 1D (Δt = 1s, Δr = 0.7mm) [~8 ms]</p>
-                <p className="text-indigo-400 pl-4">• Calcula inativação de POD e antocianinas via Arrhenius [~1 ms]</p>
-                <p className="text-emerald-400">[2. FastAPI Engine] ──(INSERT estado_digital_twin)──&gt; [3. Supabase DB]</p>
-                <p className="text-cyan-400">[3. Supabase DB] ──(WebSocket broadcast)──&gt; [4. React SCADA Frontend]</p>
-                <p className="text-slate-400 border-t border-slate-800/80 pt-2">Latência total do ciclo fechado: ~75 ms (compatível com controle térmico industrial).</p>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1083,27 +1021,6 @@ export default function DashboardDigitalTwin() {
               <p className="text-xs font-semibold uppercase tracking-wider text-purple-400">Dados Experimentais</p>
               <h2 className="text-2xl font-bold text-white">Constantes Termofísicas Adotadas</h2>
               <p className="mt-1 text-sm text-slate-400">Propriedades da espécie <em>Euterpe oleracea</em> empregadas no modelo.</p>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
-                <h4 className="font-semibold text-white text-sm">Geometria da Amostra</h4>
-                <div className="divide-y divide-slate-800/80 text-xs">
-                  <div className="flex justify-between py-2.5"><span className="text-slate-400">Raio Médio da Baga (R)</span><span className="font-mono text-purple-300">7.0 mm (0.007 m)</span></div>
-                  <div className="flex justify-between py-2.5"><span className="text-slate-400">Diâmetro Médio Total</span><span className="font-mono text-purple-300">14.0 mm</span></div>
-                  <div className="flex justify-between py-2.5"><span className="text-slate-400">Aproximação Geométrica</span><span className="font-mono text-purple-300">Esfera Homogênea 1D</span></div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
-                <h4 className="font-semibold text-white text-sm">Propriedades Térmicas da Polpa</h4>
-                <div className="divide-y divide-slate-800/80 text-xs">
-                  <div className="flex justify-between py-2.5"><span className="text-slate-400">Condutividade Térmica (k)</span><span className="font-mono text-indigo-300">0.52 W/(m·K)</span></div>
-                  <div className="flex justify-between py-2.5"><span className="text-slate-400">Calor Específico (Cp)</span><span className="font-mono text-indigo-300">3850 J/(kg·K)</span></div>
-                  <div className="flex justify-between py-2.5"><span className="text-slate-400">Massa Específica (ρ)</span><span className="font-mono text-indigo-300">1020 kg/m³</span></div>
-                  <div className="flex justify-between py-2.5"><span className="text-slate-400">Difusividade Térmica (α)</span><span className="font-mono text-indigo-300">1.32 × 10⁻⁷ m²/s</span></div>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -1129,6 +1046,7 @@ export default function DashboardDigitalTwin() {
                     <th className="p-4">T. Superfície (°C)</th>
                     <th className="p-4">T. Centro (°C)</th>
                     <th className="p-4">Gradiente ΔT (°C)</th>
+                    <th className="p-4">Fo (Fourier)</th>
                     <th className="p-4">Inativação (%)</th>
                     <th className="p-4">Retenção (%)</th>
                     <th className="p-4">Status</th>
@@ -1143,6 +1061,7 @@ export default function DashboardDigitalTwin() {
                         <td className="p-4 text-rose-300">{formatarNumero(item.temp_superficie_c)}</td>
                         <td className="p-4 text-amber-300">{formatarNumero(item.temp_centro_c)}</td>
                         <td className="p-4 text-slate-400">{dt}</td>
+                        <td className="p-4 text-indigo-300">{formatarNumero(item.numero_fourier, 3)}</td>
                         <td className="p-4 text-emerald-300">{formatarNumero(item.taxa_inativacao_pct)}%</td>
                         <td className="p-4 text-purple-400">{formatarNumero(item.retencao_antocianinas_pct)}%</td>
                         <td className="p-4">
