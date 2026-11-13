@@ -2,8 +2,8 @@
 Sensor virtual do banho de branqueamento.
 
 Envia uma leitura de temperatura por segundo ao motor (/api/v1/lotes/{id}/leituras)
-e obedece à ação recomendada pelo gêmeo digital (corte preditivo). Quem grava no
-Supabase é o motor — este script não precisa de credenciais.
+e obedece à ação recomendada pelo gêmeo digital (corte preditivo). O motor grava
+cada estado no seu banco SQLite e o transmite ao painel em tempo real.
 
 Uso:
     python simulator/mock_sensor.py                         # motor local
@@ -47,8 +47,6 @@ def main():
               f"sup={e['temp_superficie_c']:5.1f}  centro={e['temp_centro_c']:5.1f}  "
               f"letal={e['tempo_letal_superficie_s']:4.1f}s  "
               f"prev={'—' if prev is None else f'{prev:4.1f}s'}  {e['status_processo']}")
-        if e.get("aviso_persistencia"):
-            print(f"    [!] Supabase: {e['aviso_persistencia']}")
 
         if imerso and e["acao_recomendada"] == "RETIRAR_DO_BANHO":
             print("\n[✓] Critério sanitário cumprido — retirando os frutos do banho.\n")

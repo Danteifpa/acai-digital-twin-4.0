@@ -25,7 +25,7 @@ export default function Supervisorio({ estado, historico, malha, diametroMm, mod
         </div>
         <div className="flex items-center gap-3">
           <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-3.5 py-1 text-xs font-mono font-semibold text-purple-300">
-            {modo === 'simulacao' ? 'Simulação (motor numérico)' : 'Tempo real (sensor → motor → Supabase)'}
+            {modo === 'simulacao' ? 'Simulação (motor numérico)' : 'Tempo real (sensor → motor → painel)'}
           </span>
           <span className="rounded-full border border-slate-800 bg-slate-900 px-3.5 py-1 text-xs font-mono text-slate-300">
             t = {fmt(estado?.tempo_decorrido_s, 1)} s

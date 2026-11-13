@@ -9,6 +9,7 @@ COPY acai_twin/ acai_twin/
 COPY main.py .
 
 ENV PORT=8000
+ENV ACAI_DB=/app/dados/acai_twin.db
 EXPOSE 8000
 
 # Render/Fly definem $PORT; localmente usa 8000.

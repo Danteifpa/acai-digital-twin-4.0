@@ -115,13 +115,16 @@ export function Arquitetura() {
 Motor numérico (FastAPI, engine/)
    ├─ avança T(r,t) e a cinética do lote
    ├─ prevê o tempo até cumprir o critério → ação: MANTER / RETIRAR
-   └─ grava em Supabase com chave service_role
+   ├─ grava em SQLite (arquivo local, exportável em CSV)
+   └─ transmite cada estado por Server-Sent Events (/api/v1/stream)
         ▼
-Supabase (Postgres + Realtime, RLS: leitura pública, escrita só do motor)
-        ▼
-Painel React (este app) — assina estado_digital_twin em tempo real
-        │
-        └─ modo Simulação: POST /api/v1/comparar → reproduz a série calculada`}</pre>
+Painel React (este app, publicado no GitHub Pages)
+   ├─ modo Tempo real: escuta o stream do motor
+   └─ modo Simulação: POST /api/v1/comparar → reproduz a série`}</pre>
+        <p className="text-sm leading-relaxed text-slate-300">
+          Nenhum serviço de banco de dados externo: o GitHub guarda o código, roda os testes a cada envio
+          (GitHub Actions) e publica o painel; só o motor precisa de um servidor (Render ou o próprio computador).
+        </p>
       </Cartao>
     </div>
   );

@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity, AlertTriangle, ArrowRightLeft, Award, BookOpen, ChevronRight, Cpu, Database, Download,
-  FileText, Flame, Leaf, Play, RotateCcw, Scale, Settings2, Sliders, Wifi, XCircle,
+  Download as Baixar, FileText, Flame, Leaf, Play, RotateCcw, Scale, Settings2, Sliders, Wifi, XCircle,
 } from 'lucide-react';
 import { api } from './api';
-import { supabase } from './config';
 import { gerarLaudoPDF } from './laudo';
 import { fmt } from './util';
 import Supervisorio from './abas/Supervisorio';
@@ -114,50 +113,48 @@ export default function DashboardDigitalTwin() {
   };
 
   // ------------------------------------------------------------ modo tempo real
+  const [lotesGravados, setLotesGravados] = useState([]);
+
   const carregarLote = useCallback(async (id) => {
-    const { data, error } = await supabase
-      .from('estado_digital_twin').select('*').eq('lote_id', id)
-      .order('tempo_decorrido_s', { ascending: true }).limit(1000);
-    if (error) throw error;
+    const dados = await api.serie(id);
     loteRef.current = id;
     setLoteId(id);
-    setHistorico(data);
-    if (data.length) {
-      const ultimo = data[data.length - 1];
-      setEstado(ultimo);
-      setMalha(malhaPadrao(ultimo.perfil_radial_c?.length ?? 0, 14));
-    }
+    setHistorico(dados);
+    const ultimo = dados[dados.length - 1];
+    setEstado(ultimo ?? null);
+    if (ultimo) setMalha(malhaPadrao(ultimo.perfil_radial_c?.length ?? 0, 14));
   }, []);
 
   useEffect(() => {
-    if (modo !== 'tempo_real' || !supabase) return undefined;
+    if (modo !== 'tempo_real') return undefined;
     let ativo = true;
 
-    supabase.from('estado_digital_twin').select('lote_id').order('id', { ascending: false }).limit(1)
-      .then(({ data, error }) => {
-        if (error) { setErro(`Supabase: ${error.message}`); return; }
-        if (ativo && data?.length) carregarLote(data[0].lote_id).catch((e) => setErro(e.message));
-      });
-
-    const canal = supabase
-      .channel('estado_digital_twin_live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'estado_digital_twin' }, ({ new: novo }) => {
-        if (!ativo || !novo) return;
-        if (loteRef.current !== novo.lote_id) {
-          loteRef.current = novo.lote_id;
-          setLoteId(novo.lote_id);
-          setHistorico([novo]);
-        } else {
-          setHistorico((h) => [...h, novo]);
-        }
-        setEstado(novo);
-        setMalha(malhaPadrao(novo.perfil_radial_c?.length ?? 0, 14));
+    api.lotes()
+      .then((lista) => {
+        if (!ativo) return;
+        setLotesGravados(lista);
+        if (lista.length) return carregarLote(lista[0].lote_id);
+        return undefined;
       })
-      .subscribe((status) => ativo && setRealtimeOk(status === 'SUBSCRIBED'));
+      .catch((e) => ativo && setErro(`Motor: ${e.message}`));
+
+    const cancelar = api.assinar((novo) => {
+      if (!ativo || !novo) return;
+      if (loteRef.current !== novo.lote_id) {
+        loteRef.current = novo.lote_id;
+        setLoteId(novo.lote_id);
+        setHistorico([novo]);
+        setLotesGravados((ls) => (ls.some((l) => l.lote_id === novo.lote_id) ? ls : [{ lote_id: novo.lote_id }, ...ls]));
+      } else {
+        setHistorico((h) => [...h, novo]);
+      }
+      setEstado(novo);
+      setMalha(malhaPadrao(novo.perfil_radial_c?.length ?? 0, 14));
+    }, (ok) => ativo && setRealtimeOk(ok));
 
     return () => {
       ativo = false;
-      supabase.removeChannel(canal);
+      cancelar();
       setRealtimeOk(false);
     };
   }, [modo, carregarLote]);
@@ -199,14 +196,13 @@ export default function DashboardDigitalTwin() {
 
             <div className="mt-4 space-y-1.5 text-xs">
               <Conexao rotulo="Motor numérico" ok={motorOnline} />
-              <Conexao rotulo="Supabase Realtime" ok={supabase ? (modo === 'tempo_real' ? realtimeOk : null) : false}
-                dica={supabase ? undefined : 'não configurado'} />
+              <Conexao rotulo="Stream em tempo real" ok={modo === 'tempo_real' ? realtimeOk : null}
+                dica={modo === 'tempo_real' ? undefined : 'inativo'} />
             </div>
 
             <div className="mt-3 flex rounded-xl border border-slate-800 bg-slate-950 p-1 text-[10px] font-mono">
               {[['simulacao', 'Simulação'], ['tempo_real', 'Tempo real']].map(([id, rot]) => (
-                <button key={id} onClick={() => trocarModo(id)} disabled={id === 'tempo_real' && !supabase}
-                  className={`flex-1 rounded-lg py-1 text-center transition-all disabled:opacity-40 ${modo === id ? 'bg-purple-600 font-bold text-white' : 'text-slate-400 hover:text-white'}`}>
+                <button key={id} onClick={() => trocarModo(id)} className={`flex-1 rounded-lg py-1 text-center transition-all disabled:opacity-40 ${modo === id ? 'bg-purple-600 font-bold text-white' : 'text-slate-400 hover:text-white'}`}>
                   {rot}
                 </button>
               ))}
@@ -238,6 +234,23 @@ export default function DashboardDigitalTwin() {
                 {modo === 'simulacao' ? 'Condições do ciclo' : `Acompanhando lote ${loteId || '—'}`}
               </span>
             </div>
+            {modo === 'tempo_real' && (
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span className="text-slate-400">Lote:</span>
+                <select value={loteId || ''} onChange={(e) => carregarLote(e.target.value).catch((er) => setErro(er.message))}
+                  className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 font-mono text-slate-200">
+                  {!loteId && <option value="">nenhum lote gravado</option>}
+                  {lotesGravados.map((l) => <option key={l.lote_id} value={l.lote_id}>{l.lote_id}</option>)}
+                </select>
+                {loteId && (
+                  <a href={api.urlCsv(loteId)}
+                    className="flex items-center gap-1 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 font-semibold text-slate-300 hover:bg-slate-800">
+                    <Baixar className="h-3.5 w-3.5" /> Exportar CSV
+                  </a>
+                )}
+                <span className="text-slate-500">Envie leituras com <code className="text-purple-300">python simulator/mock_sensor.py</code></span>
+              </div>
+            )}
             {modo === 'simulacao' && (
               <div className="flex flex-wrap items-center gap-5 text-xs">
                 <label className="flex items-center gap-2">

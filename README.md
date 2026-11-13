@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.118-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Supabase](https://img.shields.io/badge/Supabase-Realtime-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
+[![CI](https://github.com/Danteifpa/acai-digital-twin-4.0/actions/workflows/ci.yml/badge.svg)](https://github.com/Danteifpa/acai-digital-twin-4.0/actions/workflows/ci.yml)
 
 ---
 
@@ -57,19 +57,20 @@ Principais conclusões:
 
 ## 🏗️ Arquitetura
 
+Sem banco de dados externo: o GitHub guarda o código, roda os testes e publica o painel. Só o motor precisa de um servidor.
+
 ```
 Sensor do banho (ESP32 · simulator/mock_sensor.py)
       │  POST /api/v1/lotes/{id}/leituras   (T_banho a cada 1 s)
       ▼
-Motor numérico — engine/ (FastAPI + NumPy)
+Motor numérico — engine/ (FastAPI + NumPy) · Render ou o próprio computador
       ├─ avança T(r,t) e a cinética do lote
       ├─ prevê o tempo até cumprir o critério → MANTER / RETIRAR_DO_BANHO
-      └─ grava no Supabase (chave service_role)
+      ├─ grava em SQLite (arquivo local; exportação CSV por lote)
+      └─ transmite cada estado por Server-Sent Events (/api/v1/stream)
       ▼
-Supabase — Postgres + Realtime (RLS: leitura pública, escrita só do motor)
-      ▼
-Painel — frontend/ (React + Recharts)
-      ├─ modo Tempo real: assina estado_digital_twin
+Painel — frontend/ (React + Recharts) · GitHub Pages
+      ├─ modo Tempo real: escuta o stream do motor
       └─ modo Simulação: POST /api/v1/comparar e reproduz a série
 ```
 
@@ -79,12 +80,14 @@ engine/
   acai_twin/termico.py      volumes finitos em esfera composta
   acai_twin/cinetica.py     Arrhenius e D–z integrados no tempo
   acai_twin/processo.py     lote, corte preditivo, simulação completa
+  acai_twin/armazenamento.py  SQLite + exportação CSV
   main.py                   API REST
   tests/                    verificação contra solução analítica, conservação, API
   scripts/calibrar_h.py     calibração do coeficiente convectivo
 frontend/src/               painel (abas em src/abas/, laudo PDF em laudo.js)
 simulator/mock_sensor.py    sensor virtual que obedece ao corte preditivo
-supabase/schema.sql         tabelas, migração, RLS e Realtime
+.github/workflows/          CI (testes, lint, build) e publicação no GitHub Pages
+render.yaml                 blueprint do motor no Render
 ```
 
 ## 🚀 Como rodar
@@ -93,19 +96,27 @@ supabase/schema.sql         tabelas, migração, RLS e Realtime
 # 1. Motor
 cd engine
 pip install -r requirements-dev.txt
-pytest                       # 16 testes
+pytest                       # 19 testes
 uvicorn main:app --reload    # http://127.0.0.1:8000/docs
 
 # 2. Painel (outro terminal)
 cd frontend
-cp .env.example .env.local   # ajuste VITE_ENGINE_URL (e Supabase, se usar)
+cp .env.example .env.local   # VITE_ENGINE_URL=http://127.0.0.1:8000
 npm install && npm run dev   # http://localhost:5173
 
 # 3. Sensor virtual (opcional, modo tempo real)
 python simulator/mock_sensor.py --banho 88
 ```
 
-Para persistência, rode `supabase/schema.sql` no SQL Editor do Supabase e defina `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` no ambiente do motor (veja `engine/.env.example`). O painel usa somente a chave *anon*, que o RLS limita a leitura.
+Os lotes do modo tempo real ficam em `engine/dados/acai_twin.db` e podem ser exportados em CSV pelo painel (botão **Exportar CSV**) ou em `GET /api/v1/lotes/{id}/csv`.
+
+### Publicação (tudo a partir do GitHub)
+
+1. **Motor no Render:** Dashboard → *New → Blueprint* → escolha este repositório (usa `render.yaml`). Anote o endereço gerado.
+2. **Painel no GitHub Pages:** *Settings → Pages → Source: GitHub Actions*. Depois *Settings → Secrets and variables → Actions → Variables* → crie `ENGINE_URL` com o endereço do motor. A cada envio para a `main` o painel é publicado em `https://danteifpa.github.io/acai-digital-twin-4.0/`.
+3. **Sensor apontando para o motor publicado:** `ENGINE_URL=https://SEU-MOTOR.onrender.com python simulator/mock_sensor.py`.
+
+> No plano gratuito do Render o motor hiberna sem uso (a primeira chamada demora ~1 min) e o disco é apagado a cada deploy. Para os ensaios do TCC, exporte os CSV ou rode o motor localmente.
 
 ## ✅ Verificação
 

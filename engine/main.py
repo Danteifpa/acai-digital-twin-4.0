@@ -1,41 +1,44 @@
 """
 AçaíThermal Twin — API do motor numérico (FastAPI).
 
-Rotas principais
+Rotas
   GET  /                               saúde do serviço
   GET  /api/v1/parametros              parâmetros do modelo (com fontes no código)
   POST /api/v1/simular                 ciclo completo (preditivo | fixo | centro_70)
   POST /api/v1/comparar                os três modos lado a lado
-  POST /api/v1/lotes/{id}/leituras     modo tempo real: uma leitura de sensor → novo estado
-  POST /api/v1/lotes/{id}/reset        reinicia o lote
+  POST /api/v1/lotes/{id}/leituras     tempo real: uma leitura do sensor → novo estado
+  POST /api/v1/lotes/{id}/reset        reinicia o lote (apaga a série gravada)
+  GET  /api/v1/lotes                   lotes gravados
   GET  /api/v1/lotes/{id}              estado atual do lote
+  GET  /api/v1/lotes/{id}/serie        série gravada (JSON)
+  GET  /api/v1/lotes/{id}/csv          série gravada (CSV, para o TCC)
+  GET  /api/v1/stream                  eventos em tempo real (Server-Sent Events)
 
-Persistência no Supabase é opcional: defina SUPABASE_URL e SUPABASE_SERVICE_KEY
-(chave service_role – nunca a publique no front-end).
+Sem serviços externos: os dados ficam num arquivo SQLite (variável ACAI_DB).
 """
 from __future__ import annotations
 
-import logging
+import asyncio
+import json
 import os
 import threading
-from typing import Literal, Optional
+from dataclasses import replace
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from dataclasses import replace
-
-from acai_twin.parametros import Geometria, ParametrosModelo
+from acai_twin.armazenamento import Armazenamento
+from acai_twin.parametros import ParametrosModelo
 from acai_twin.processo import Lote, simular_processo
-
-log = logging.getLogger("acai_twin")
 
 app = FastAPI(
     title="AçaíThermal Twin Engine",
     description="Condução transiente em esfera composta (caroço + polpa) com contorno "
                 "convectivo e cinética integrada de antocianinas e POD — TCC IFPA.",
-    version="5.0",
+    version="5.1",
 )
 
 _origens = os.getenv("CORS_ORIGINS", "*").split(",")
@@ -46,33 +49,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------- Supabase
-_supabase = None
-if os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY"):
-    try:
-        from supabase import create_client
-        _supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
-    except Exception as e:  # pragma: no cover
-        log.warning("Supabase indisponível: %s", e)
+banco = Armazenamento()
+
+# ---------------------------------------------------------------- tempo real (SSE)
+_assinantes: set[asyncio.Queue] = set()
 
 
-def _persistir(registro: dict, temp_banho_c: float) -> Optional[str]:
-    """Grava leitura + estado. Devolve mensagem de erro (ou None)."""
-    if _supabase is None:
-        return None
-    try:
-        leitura = _supabase.table("leituras_sensores").insert(
-            {"lote_id": registro["lote_id"], "temp_banho_c": temp_banho_c}
-        ).execute()
-        leitura_id = leitura.data[0]["id"] if leitura.data else None
-        colunas = {k: v for k, v in registro.items() if k not in ("perfil_radial_c", "imerso")}
-        colunas["leitura_origem_id"] = leitura_id
-        colunas["perfil_radial_c"] = registro["perfil_radial_c"]
-        _supabase.table("estado_digital_twin").insert(colunas).execute()
-        return None
-    except Exception as e:
-        log.error("Falha ao persistir no Supabase: %s", e)
-        return str(e)
+def _publicar(evento: dict) -> None:
+    for fila in list(_assinantes):
+        try:
+            fila.put_nowait(evento)
+        except asyncio.QueueFull:  # cliente lento: descarta o evento para ele
+            pass
+
+
+@app.get("/api/v1/stream")
+async def stream(request: Request):
+    fila: asyncio.Queue = asyncio.Queue(maxsize=500)
+    _assinantes.add(fila)
+
+    async def eventos():
+        try:
+            yield "retry: 3000\n\n"
+            while not await request.is_disconnected():
+                try:
+                    evento = await asyncio.wait_for(fila.get(), timeout=15)
+                    yield f"data: {json.dumps(evento, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"  # mantém a conexão viva em proxies
+        finally:
+            _assinantes.discard(fila)
+
+    return StreamingResponse(eventos(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ---------------------------------------------------------------- estado dos lotes
@@ -80,21 +89,12 @@ _lotes: dict[str, Lote] = {}
 _trava = threading.Lock()
 
 
-def _obter_lote(lote_id: str, criar: bool = False, temp_inicial_c: float = 25.0) -> Lote:
-    with _trava:
-        if lote_id not in _lotes:
-            if not criar:
-                raise HTTPException(404, f"Lote '{lote_id}' não encontrado.")
-            _lotes[lote_id] = Lote(lote_id=lote_id, temp_inicial_c=temp_inicial_c)
-        return _lotes[lote_id]
-
-
-# ---------------------------------------------------------------- esquemas
 def _params(diametro_mm: float) -> ParametrosModelo:
     base = ParametrosModelo()
     return replace(base, geometria=replace(base.geometria, raio_m=diametro_mm / 2000.0))
 
 
+# ---------------------------------------------------------------- esquemas
 class PedidoSimulacao(BaseModel):
     diametro_mm: float = Field(14.0, ge=8, le=22)
     temp_banho_c: float = Field(85.0, ge=40, le=100)
@@ -131,7 +131,7 @@ def saude():
         "status": "online",
         "modulo": "AçaíThermal Twin Engine",
         "versao": app.version,
-        "persistencia_supabase": _supabase is not None,
+        "persistencia": "sqlite",
         "criterio_sanitario": "superfície ≥ 80 °C por ≥ 10 s (branqueamento — PA 2012 / AP 2015)",
     }
 
@@ -165,21 +165,23 @@ def comparar(pedido: PedidoComparacao):
 
 
 @app.post("/api/v1/lotes/{lote_id}/leituras")
-def registrar_leitura(lote_id: str, leitura: Leitura):
-    lote = _obter_lote(lote_id, criar=True, temp_inicial_c=leitura.temp_inicial_c)
+async def registrar_leitura(lote_id: str, leitura: Leitura):
     with _trava:
+        lote = _lotes.get(lote_id)
+        if lote is None:
+            lote = _lotes[lote_id] = Lote(lote_id=lote_id, temp_inicial_c=leitura.temp_inicial_c)
         lote.passo(leitura.temp_banho_c, leitura.dt_s, imerso=leitura.imerso)
         registro = lote.registro()
         previsao = lote.prever_tempo_corte(leitura.temp_banho_c) if leitura.imerso else None
+        atingido = lote.criterio_atingido
     registro["previsao_corte_s"] = None if previsao is None else round(previsao, 1)
     registro["acao_recomendada"] = (
-        "RETIRAR_DO_BANHO" if lote.criterio_atingido and leitura.imerso
+        "RETIRAR_DO_BANHO" if atingido and leitura.imerso
         else "AUMENTAR_TEMPERATURA_DO_BANHO" if leitura.imerso and previsao is None
         else "MANTER"
     )
-    erro = _persistir(registro, leitura.temp_banho_c)
-    if erro:
-        registro["aviso_persistencia"] = erro
+    banco.salvar(registro)
+    _publicar(registro)
     return registro
 
 
@@ -187,12 +189,38 @@ def registrar_leitura(lote_id: str, leitura: Leitura):
 def resetar_lote(lote_id: str, pedido: PedidoReset):
     with _trava:
         _lotes[lote_id] = Lote(lote_id=lote_id, temp_inicial_c=pedido.temp_inicial_c)
-    return _lotes[lote_id].registro()
+        registro = _lotes[lote_id].registro()
+    banco.apagar_lote(lote_id)
+    return registro
+
+
+@app.get("/api/v1/lotes")
+def listar_lotes(limite: int = 50):
+    return banco.lotes(limite)
 
 
 @app.get("/api/v1/lotes/{lote_id}")
 def estado_lote(lote_id: str):
-    return _obter_lote(lote_id).registro()
+    with _trava:
+        if lote_id in _lotes:
+            return _lotes[lote_id].registro()
+    serie = banco.serie(lote_id)
+    if not serie:
+        raise HTTPException(404, f"Lote '{lote_id}' não encontrado.")
+    return serie[-1]
+
+
+@app.get("/api/v1/lotes/{lote_id}/serie")
+def serie_lote(lote_id: str):
+    return banco.serie(lote_id)
+
+
+@app.get("/api/v1/lotes/{lote_id}/csv", response_class=PlainTextResponse)
+def csv_lote(lote_id: str):
+    return PlainTextResponse(
+        banco.csv(lote_id), media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{lote_id}.csv"'},
+    )
 
 
 if __name__ == "__main__":
