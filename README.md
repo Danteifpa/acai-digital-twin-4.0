@@ -1,55 +1,144 @@
-![AçaíThermal Twin SCADA](docs/assets/dashboard.png)
-# AçaíThermal Twin 4.0 🍇⚡
+<div align="center">
 
-> **Digital Twin para Simulação Termofísica e Otimização Cinética da Pasteurização do Açaí (*Euterpe oleracea*)**  
-> *Trabalho de Conclusão de Curso 1 (TCC 1) — Bacharelado em Ciência e Tecnologia — IFPA Campus Ananindeua*
+# AçaíThermal Twin
 
----
+**Gêmeo digital do branqueamento de frutos de açaí (*Euterpe oleracea*)**
 
-[![Licence](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Supabase](https://img.shields.io/badge/Supabase-Realtime-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
-[![SESPA](https://img.shields.io/badge/Sanitário-Portaria%20SESPA%20453%2F2019-emerald)](https://saude.pa.gov.br)
+Estima em tempo real a temperatura da superfície do fruto e indica o instante exato em que o critério sanitário contra o *Trypanosoma cruzi* é cumprido.
 
----
+[![CI](https://github.com/Danteifpa/acai-digital-twin-4.0/actions/workflows/ci.yml/badge.svg)](https://github.com/Danteifpa/acai-digital-twin-4.0/actions/workflows/ci.yml)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](engine/)
+[![React 19](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black)](frontend/)
+[![Citar](https://img.shields.io/badge/citar-CITATION.cff-8A2BE2)](CITATION.cff)
 
-## 📌 Visão Geral
+*Trabalho de Conclusão de Curso — Bacharelado em Ciência e Tecnologia — IFPA Campus Ananindeua*
 
-O **AçaíThermal Twin** é um sistema ciber-físico (CPS) e gêmeo digital desenvolvido para solucionar o clássico dilema termodinâmico da agroindústria do açaí: **assegurar 100% de letalidade térmica contra o *Trypanosoma cruzi*** (agente da Doença de Chagas) sem degradar o valor fitoquímico e sensorial das **antocianinas**.
+![Supervisório do gêmeo digital](docs/assets/dashboard.png)
 
-Diferente do método empírico convencional — que opera às cegas com tempos estáticos de imersão —, este sistema calcula em tempo real o perfil de penetração térmica no centro crítico ($r=0$) da baga e dispara o corte térmico preditivo assim que a inativação enzimática de segurança é atingida.
+</div>
 
 ---
 
-## 🔬 Fundamentação Teórico-Científica
+## Sumário
 
-### 1. Condução Transiente 1D em Coordenadas Esféricas (EDP de Fourier)
-Considerando a baga de açaí como uma esfera equivalente de raio $R$:
+- [O problema](#o-problema)
+- [O que o sistema faz](#o-que-o-sistema-faz)
+- [Principais resultados](#principais-resultados)
+- [Início rápido](#início-rápido)
+- [Arquitetura](#arquitetura)
+- [Documentação](#documentação)
+- [Limitações](#limitações)
+- [Como citar](#como-citar)
+- [Referências](#referências)
 
-$$\frac{\partial T}{\partial t} = \alpha \left[ \frac{\partial^2 T}{\partial r^2} + \frac{2}{r} \frac{\partial T}{\partial r} \right]$$
+## O problema
 
-* **Condição no Centro ($r = 0$):** $\left. \frac{\partial T}{\partial r} \right|_{r=0} = 0$ (Simetria térmica)
-* **Condição na Fronteira ($r = R$):** $T(R, t) = T_{\text{banho}}(t)$ (Transferência superficial)
-* **Critério de Estabilidade Numérica (FDM Explícito):** $\text{Fo}_\Delta = \frac{\alpha \cdot \Delta t}{(\Delta r)^2} \le 0{,}5$
+O branqueamento dos frutos (água a **80 °C por 10 s**, obrigatório no Pará desde 2012 e no Amapá desde 2015) é a barreira contra a transmissão oral da Doença de Chagas pelo açaí. O *T. cruzi* chega ao fruto em fezes ou fragmentos de barbeiro **aderidos à casca**, então o que importa é a temperatura efetiva da **superfície do fruto**, não a da água.
 
-### 2. Cinética Concorrente de Arrhenius
-Modelagem da inativação da enzima Peroxidase (POD) e da taxa de retenção das antocianinas totais (Cianidina 3-glicosídeo e Cianidina 3-rutinosídeo):
+Medições da Embrapa mostram que, com a água a ~80 °C, a superfície fica entre 77,8 e 78,8 °C nos primeiros 10 s. Ou seja, o binômio nominal sozinho não garante a condição no fruto.
 
-$$\frac{dC}{dt} = -k(T) \cdot C \quad \text{onde} \quad k(T) = A \cdot \exp\left(-\frac{E_a}{R_{\text{gas}} \cdot T}\right)$$
+## O que o sistema faz
 
----
+- **Modelo físico:** condução transiente numa esfera composta (caroço + polpa), em volumes finitos, com troca de calor convectiva calibrada contra dados experimentais.
+- **Cinética:** degradação de antocianinas (Arrhenius) e inativação da peroxidase (bifásica, D–z), integradas no tempo em cada ponto da polpa.
+- **Corte preditivo:** a cada leitura do sensor do banho, prevê quando a superfície terá ficado 10 s acima de 80 °C e avisa quando retirar os frutos.
+- **Painel:** supervisório em tempo real, comparação de estratégias, análise de sensibilidade e laudo em PDF com o resultado real do lote.
 
-## ⚖️ Conformidade Regulatória e Resultados
+## Principais resultados
 
-| Parâmetro | Método Convencional (Empírico) | AçaíThermal Twin (Otimizado) | Critério / Norma |
-| :--- | :---: | :---: | :--- |
-| **Temperatura Centro ($r=0$)** | Não monitorada / Incerta | **$\ge 70{,}0\ ^\circ\text{C}$** | Letalidade *T. cruzi* |
-| **Inativação de POD** | Variável | **$> 90{,}0\%$** | Portaria SESPA nº 453/2019 |
-| **Retenção de Antocianinas** | $\approx 50\% - 55\%$ (Perda severa) | **$> 90{,}0\%$** | MAPA IN nº 37/2018 |
-| **Eficiência Energética** | Consumo redundante | **Economia de até $\approx 38\text{ kJ/kg}$** | Otimização Térmica |
+Fruto de 14 mm, banho a 88 °C:
 
----
+| Estratégia | Imersão | Calor absorvido | Critério sanitário |
+|---|---:|---:|:---:|
+| **Preditiva (gêmeo digital)** | **11,5 s** | **77,7 kJ/kg** | ✅ |
+| Tempo fixo de 10 s | 10,0 s | 73,8 kJ/kg | ❌ |
+| Centro ≥ 70 °C (versão anterior) | 83,0 s | 138,8 kJ/kg | ✅ |
 
-## 🏗️ Arquitetura do Sistema
+1. **44 % menos calor** absorvido que esperar o centro do fruto chegar a 70 °C.
+2. O tempo de corte **quase não depende do tamanho do fruto** (11–11,5 s de 10 a 20 mm). O critério no centro vai de 43 s a 168 s.
+3. **Água a 80 °C não cumpre o critério**: a superfície só tende assintoticamente a 80 °C.
+4. Em segundos de branqueamento, a perda de antocianinas é inferior a 0,1 %.
+
+O solver reproduz a solução analítica com erro < 0,005 °C, converge com ordem 2 e conserva energia. Detalhes e figuras em [docs/validacao.md](docs/validacao.md).
+
+![Comparativo de estratégias](docs/figuras/comparativo_estrategias.png)
+
+## Início rápido
+
+```bash
+git clone https://github.com/Danteifpa/acai-digital-twin-4.0.git
+cd acai-digital-twin-4.0
+
+make instalar   # dependências do motor e do painel
+make motor      # terminal 1 → http://127.0.0.1:8000/docs
+make painel     # terminal 2 → http://localhost:5173
+make sensor     # terminal 3 (opcional) → leituras em tempo real
+```
+
+Sem `make` (Windows), ou com Docker (`docker compose up --build`): veja [docs/implantacao.md](docs/implantacao.md).
+
+## Arquitetura
+
+```
+Sensor do banho (ESP32 · simulator/mock_sensor.py)
+      │  POST /api/v1/lotes/{id}/leituras        (1 leitura/s)
+      ▼
+Motor numérico — engine/  (FastAPI + NumPy · Render ou local)
+      ├─ T(r,t) e cinética do lote
+      ├─ previsão de corte → MANTER | RETIRAR_DO_BANHO
+      ├─ SQLite (exportação CSV)
+      └─ Server-Sent Events → /api/v1/stream
+      ▼
+Painel — frontend/  (React + Recharts · GitHub Pages)
+```
+
+```
+engine/
+├── acai_twin/        modelo: parametros, termico, cinetica, processo, armazenamento, analitico
+├── tests/            verificação analítica, conservação, cinética, API
+├── scripts/          calibração de h e geração de figuras
+└── main.py           API REST + SSE
+frontend/src/         painel (abas em abas/, laudo PDF em laudo.js)
+simulator/            sensor virtual
+docs/                 modelo, validação, API, implantação e figuras
+```
+
+## Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| [docs/modelo.md](docs/modelo.md) | equações, discretização, cinética, critério sanitário, hipóteses |
+| [docs/validacao.md](docs/validacao.md) | verificação analítica, convergência, calibração, resultados |
+| [docs/api.md](docs/api.md) | rotas, exemplos de requisição e stream em tempo real |
+| [docs/implantacao.md](docs/implantacao.md) | instalação local, Docker, Render e GitHub Pages |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | fluxo de contribuição e padrões |
+| [CHANGELOG.md](CHANGELOG.md) | histórico de versões |
+
+## Limitações
+
+- As propriedades térmicas do **caroço** são estimativas, por falta de medição publicada para o açaí.
+- A **fração lábil da POD** (0,80) foi assumida.
+- O modelo considera o fruto isolado e esférico, num banho de temperatura uniforme.
+- O critério de 80 °C/10 s é regulatório: não há modelo cinético do *T. cruzi*.
+
+A tabela completa de hipóteses, com o caminho para resolver cada uma, está em [docs/modelo.md](docs/modelo.md#8-hipóteses-e-limitações).
+
+## Como citar
+
+Use o botão **"Cite this repository"** do GitHub (gerado a partir de [CITATION.cff](CITATION.cff)) ou:
+
+> Monteiro, D. D. (2026). *AçaíThermal Twin: gêmeo digital do branqueamento de frutos de açaí* (versão 5.1.0) [Software]. IFPA Campus Ananindeua. https://github.com/Danteifpa/acai-digital-twin-4.0
+
+## Referências
+
+- Anjos, C. A. R. et al. (2020). Thermal degradation kinetics of total anthocyanins in açaí pulp and transient processing simulations. *SN Applied Sciences*, 2, 523. https://doi.org/10.1007/s42452-020-2340-0
+- Costa, H. C. B. (2019). *Avaliação da pasteurização contínua da polpa de açaí sobre a inativação térmica das enzimas peroxidase e polifenoloxidase*. Dissertação, Universidade Federal de Uberlândia.
+- Bezerra, V. S. et al. Temperatura efetiva na superfície de frutos de açaí no branqueamento. Embrapa (Alice, doc. 1070158).
+- Bezerra, V. S. (2017). *Tratamento térmico do açaí*. Embrapa Amapá, Comunicado Técnico 151.
+- Ferreira, E. A. P. et al. (2016). O branqueamento do açaí em batedeiras artesanais para controle do *Trypanosoma cruzi*. Embrapa.
+- Caracterização termofísica da polpa de açaí. Universidade Federal de Campina Grande (BDTD riufcg/2218).
+
+## Licença
+
+[MIT](LICENSE) © 2026 Dante Dias Monteiro

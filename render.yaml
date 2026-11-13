@@ -1,0 +1,13 @@
+# Blueprint do Render para o motor (Dashboard → New → Blueprint → este repositório).
+# Plano gratuito: o disco é apagado a cada deploy/hibernação — exporte os lotes em CSV.
+services:
+  - type: web
+    name: acai-twin-engine
+    runtime: docker
+    rootDir: engine
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: CORS_ORIGINS
+        value: "*"

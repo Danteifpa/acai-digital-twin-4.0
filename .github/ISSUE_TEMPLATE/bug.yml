@@ -1,0 +1,30 @@
+name: Problema
+description: Algo não funciona como esperado
+labels: [bug]
+body:
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que aconteceu?
+      description: Descreva o problema e o que você esperava.
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como reproduzir
+      placeholder: |
+        1. Rodar `make motor`
+        2. Abrir o painel e clicar em…
+  - type: dropdown
+    id: parte
+    attributes:
+      label: Parte do sistema
+      options: [Motor (engine), Painel (frontend), Simulador, Documentação, Outro]
+    validations:
+      required: true
+  - type: textarea
+    id: ambiente
+    attributes:
+      label: Ambiente
+      placeholder: Windows 11, Python 3.11, Node 22, navegador…

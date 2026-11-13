@@ -1,0 +1,31 @@
+# Sobe o projeto inteiro com um comando:  docker compose up --build
+#   motor  → http://localhost:8000/docs
+#   painel → http://localhost:5173
+services:
+  motor:
+    build: ./engine
+    ports:
+      - "8000:8000"
+    environment:
+      CORS_ORIGINS: "*"
+      ACAI_DB: /app/dados/acai_twin.db
+    volumes:
+      - dados-motor:/app/dados
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  painel:
+    build:
+      context: ./frontend
+      args:
+        VITE_ENGINE_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - motor
+
+volumes:
+  dados-motor:
