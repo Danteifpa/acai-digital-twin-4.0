@@ -16,9 +16,11 @@ Rotas
 
 Sem serviços externos: os dados ficam num arquivo SQLite (variável ACAI_DB).
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import threading
@@ -37,7 +39,7 @@ from acai_twin.processo import Lote, simular_processo
 app = FastAPI(
     title="AçaíThermal Twin Engine",
     description="Condução transiente em esfera composta (caroço + polpa) com contorno "
-                "convectivo e cinética integrada de antocianinas e POD — TCC IFPA.",
+    "convectivo e cinética integrada de antocianinas e POD — TCC IFPA.",
     version="5.1",
 )
 
@@ -57,10 +59,8 @@ _assinantes: set[asyncio.Queue] = set()
 
 def _publicar(evento: dict) -> None:
     for fila in list(_assinantes):
-        try:
+        with contextlib.suppress(asyncio.QueueFull):  # cliente lento: descarta o evento para ele
             fila.put_nowait(evento)
-        except asyncio.QueueFull:  # cliente lento: descarta o evento para ele
-            pass
 
 
 @app.get("/api/v1/stream")
@@ -75,13 +75,16 @@ async def stream(request: Request):
                 try:
                     evento = await asyncio.wait_for(fila.get(), timeout=15)
                     yield f"data: {json.dumps(evento, ensure_ascii=False)}\n\n"
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": ping\n\n"  # mantém a conexão viva em proxies
         finally:
             _assinantes.discard(fila)
 
-    return StreamingResponse(eventos(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        eventos(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------------------------------------------------------------- estado dos lotes
@@ -176,8 +179,10 @@ async def registrar_leitura(lote_id: str, leitura: Leitura):
         atingido = lote.criterio_atingido
     registro["previsao_corte_s"] = None if previsao is None else round(previsao, 1)
     registro["acao_recomendada"] = (
-        "RETIRAR_DO_BANHO" if atingido and leitura.imerso
-        else "AUMENTAR_TEMPERATURA_DO_BANHO" if leitura.imerso and previsao is None
+        "RETIRAR_DO_BANHO"
+        if atingido and leitura.imerso
+        else "AUMENTAR_TEMPERATURA_DO_BANHO"
+        if leitura.imerso and previsao is None
         else "MANTER"
     )
     banco.salvar(registro)
@@ -218,11 +223,13 @@ def serie_lote(lote_id: str):
 @app.get("/api/v1/lotes/{lote_id}/csv", response_class=PlainTextResponse)
 def csv_lote(lote_id: str):
     return PlainTextResponse(
-        banco.csv(lote_id), media_type="text/csv",
+        banco.csv(lote_id),
+        media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{lote_id}.csv"'},
     )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))

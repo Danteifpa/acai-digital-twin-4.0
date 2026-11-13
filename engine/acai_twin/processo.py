@@ -8,6 +8,7 @@ Dois modos de uso:
   * Simulação completa (simular_processo): roda um ciclo inteiro, para o modo
     preditivo (corta ao atingir o critério sanitário) ou tempo fixo (empírico).
 """
+
 from __future__ import annotations
 
 import copy
@@ -47,7 +48,7 @@ class Lote:
         self.tempo_s = 0.0
         self.T = np.full(self.malha.n, float(self.temp_inicial_c))
         self.cin = EstadoCinetico(self.malha.n, self.p.antocianinas, self.p.pod)
-        self.tempo_letal_s = 0.0      # tempo acumulado com superfície ≥ critério
+        self.tempo_letal_s = 0.0  # tempo acumulado com superfície ≥ critério
         self.temp_banho_c = float(self.temp_inicial_c)
         self.imerso = False
         self.cortado = False
@@ -104,8 +105,9 @@ class Lote:
             self.status = EM_AQUECIMENTO
 
     # ------------------------------------------------------------------ previsão
-    def prever_tempo_corte(self, temp_banho_c: float, horizonte_s: float = 180.0,
-                           dt: float = 0.5) -> float | None:
+    def prever_tempo_corte(
+        self, temp_banho_c: float, horizonte_s: float = 180.0, dt: float = 0.5
+    ) -> float | None:
         """Quantos segundos (a partir de agora) até cumprir o critério sanitário,
         mantendo o banho em temp_banho_c. None se não cumprir no horizonte."""
         if self.criterio_atingido:

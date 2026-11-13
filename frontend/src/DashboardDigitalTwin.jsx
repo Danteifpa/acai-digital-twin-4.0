@@ -4,7 +4,6 @@ import {
   Download as Baixar, FileText, Flame, Leaf, Play, RotateCcw, Scale, Settings2, Sliders, Wifi, XCircle,
 } from 'lucide-react';
 import { api } from './api';
-import { gerarLaudoPDF } from './laudo';
 import { fmt } from './util';
 import Supervisorio from './abas/Supervisorio';
 import Comparativo from './abas/Comparativo';
@@ -361,7 +360,11 @@ function ModalLaudo({ resultado, comparacao, diametroMm, loteId, fechar }) {
           <button onClick={fechar} className="rounded-xl px-5 py-2.5 text-xs font-semibold text-slate-400 hover:bg-slate-800 hover:text-white">
             Fechar
           </button>
-          <button onClick={() => gerarLaudoPDF({ resultado, comparacao, diametroMm, loteId })}
+          <button onClick={async () => {
+            // jsPDF só é baixado quando o usuário pede o laudo (bundle inicial menor)
+            const { gerarLaudoPDF } = await import('./laudo');
+            await gerarLaudoPDF({ resultado, comparacao, diametroMm, loteId });
+          }}
             className="flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-purple-900/40 hover:bg-purple-500">
             <Download className="h-4 w-4" /> Baixar laudo (PDF)
           </button>

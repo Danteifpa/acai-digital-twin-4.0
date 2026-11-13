@@ -10,4 +10,18 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        // bibliotecas grandes em arquivos separados: melhor cache no navegador
+        codeSplitting: {
+          groups: [
+            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: 'graficos', test: /node_modules[\\/](recharts|d3-[^\\/]+|victory-vendor|es-toolkit|immer|@reduxjs|react-redux|reselect|redux)[\\/]/ },
+            { name: 'icones', test: /node_modules[\\/]lucide-react[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
 })

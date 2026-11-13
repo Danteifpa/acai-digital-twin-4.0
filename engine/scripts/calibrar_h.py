@@ -6,6 +6,7 @@ Bezerra et al. — temperatura efetiva na superfície de frutos de açaí imerso
   banho 88,9 °C → superfície 84,7–86,5 °C (2–10 s)
 Uso: python -m scripts.calibrar_h   (a partir da pasta engine/)
 """
+
 from dataclasses import replace
 
 import numpy as np
@@ -13,10 +14,12 @@ import numpy as np
 from acai_twin.parametros import Conveccao, ParametrosModelo
 from acai_twin.processo import Lote
 
-OBS = [  # (T_banho, T_superficie média observada)
-    (80.2, (77.8 + 78.8) / 2),
-    (88.9, (84.7 + 86.5) / 2),
+# (T_banho, T_superfície mínima, T_superfície máxima) medidas entre 2 e 10 s
+FAIXAS = [
+    (80.2, 77.8, 78.8),
+    (88.9, 84.7, 86.5),
 ]
+OBS = [(tb, (lo + hi) / 2) for tb, lo, hi in FAIXAS]  # média usada no ajuste
 TEMPOS = [2, 4, 6, 8, 10]
 
 
@@ -38,10 +41,13 @@ def erro(h: float) -> float:
 if __name__ == "__main__":
     candidatos = [250, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 7500, 10000]
     for h in candidatos:
-        print(f"h={h:6.0f}  RMSE={erro(h):5.2f} °C  "
-              + "  ".join(f"[{tb}→{sup_media(h, tb):.1f} obs {o:.1f}]" for tb, o in OBS))
+        print(
+            f"h={h:6.0f}  RMSE={erro(h):5.2f} °C  "
+            + "  ".join(f"[{tb}→{sup_media(h, tb):.1f} obs {o:.1f}]" for tb, o in OBS)
+        )
     melhor = min(candidatos, key=erro)
     print("melhor h na grade:", melhor)
     from scipy.optimize import minimize_scalar
+
     res = minimize_scalar(erro, bounds=(1000, 10000), method="bounded", options={"xatol": 10})
     print(f"h ótimo (contínuo): {res.x:.0f} W/m²K  RMSE={res.fun:.2f} °C")

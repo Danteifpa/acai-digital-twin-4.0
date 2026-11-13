@@ -1,0 +1,27 @@
+[project]
+name = "acai-thermal-twin-engine"
+version = "5.1.0"
+description = "Motor numérico do AçaíThermal Twin: condução transiente em esfera composta e cinética de branqueamento do açaí."
+readme = "../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning", "ignore::PendingDeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["dados"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "NPY"]
+ignore = [
+    "E741",    # nomes como l (linha) são legíveis no contexto
+    "SIM300",  # comparações com arrays NumPy não são "Yoda conditions"
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["acai_twin", "main"]

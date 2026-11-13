@@ -17,6 +17,7 @@ Vantagens sobre o esquema anterior (diferenças finitas com T(R) = T_banho):
   * o centro (r = 0) é tratado naturalmente, sem regra de L'Hôpital;
   * passo explícito escolhido automaticamente pelo critério de estabilidade.
 """
+
 from __future__ import annotations
 
 import math
@@ -29,13 +30,13 @@ from .parametros import ParametrosModelo
 
 @dataclass
 class Malha:
-    r: np.ndarray            # posição dos nós [m]
-    volume: np.ndarray       # volume de controle [m³]
-    capacidade: np.ndarray   # C_i = ρ c V [J/K]
-    massa: np.ndarray        # ρ V [kg]
-    g_vizinho: np.ndarray    # G entre i e i+1 [W/K] (tamanho N)
-    area_superficie: float   # 4πR² [m²]
-    e_polpa: np.ndarray      # máscara booleana dos nós de polpa
+    r: np.ndarray  # posição dos nós [m]
+    volume: np.ndarray  # volume de controle [m³]
+    capacidade: np.ndarray  # C_i = ρ c V [J/K]
+    massa: np.ndarray  # ρ V [kg]
+    g_vizinho: np.ndarray  # G entre i e i+1 [W/K] (tamanho N)
+    area_superficie: float  # 4πR² [m²]
+    e_polpa: np.ndarray  # máscara booleana dos nós de polpa
 
     @property
     def n(self) -> int:
@@ -64,7 +65,7 @@ def construir_malha(p: ParametrosModelo) -> Malha:
     # Material por nó: o volume de controle é dividido entre caroço e polpa
     # proporcionalmente quando a interface cai dentro dele.
     rc = g.raio_caroco_m
-    v_caroco = 4.0 / 3.0 * math.pi * (np.clip(r_out, 0, rc)**3 - np.clip(r_in, 0, rc)**3)
+    v_caroco = 4.0 / 3.0 * math.pi * (np.clip(r_out, 0, rc) ** 3 - np.clip(r_in, 0, rc) ** 3)
     v_polpa = volume - v_caroco
     capacidade = v_caroco * p.caroco.rho * p.caroco.cp + v_polpa * p.polpa.rho * p.polpa.cp
     massa = v_caroco * p.caroco.rho + v_polpa * p.polpa.rho
@@ -90,9 +91,20 @@ def construir_malha(p: ParametrosModelo) -> Malha:
     )
 
 
-def avancar(T: np.ndarray, malha: Malha, t_inf: float, h: float, dt: float,
-            fator_seguranca: float = 0.9) -> np.ndarray:
-    """Avança a temperatura por um intervalo dt (subdividido para estabilidade)."""
+def avancar(
+    T: np.ndarray,
+    malha: Malha,
+    t_inf: float,
+    h: float,
+    dt: float,
+    fator_seguranca: float = 0.9,
+    devolver_calor: bool = False,
+):
+    """Avança a temperatura por um intervalo dt (subdividido para estabilidade).
+
+    Com devolver_calor=True devolve (T, Q), onde Q [J] é o calor que entrou
+    pela superfície no intervalo — usado para verificar o balanço de energia.
+    """
     dt_max = fator_seguranca * malha.dt_critico(h)
     n_sub = max(1, math.ceil(dt / dt_max))
     dts = dt / n_sub
@@ -100,14 +112,17 @@ def avancar(T: np.ndarray, malha: Malha, t_inf: float, h: float, dt: float,
     g = malha.g_vizinho
     hA = h * malha.area_superficie
     inv_c = dts / malha.capacidade
+    calor = 0.0
     for _ in range(n_sub):
-        fluxo = g * (T[1:] - T[:-1])         # W, de i+1 para i
+        fluxo = g * (T[1:] - T[:-1])  # W, de i+1 para i
         q = np.zeros_like(T)
         q[:-1] += fluxo
         q[1:] -= fluxo
-        q[-1] += hA * (t_inf - T[-1])
+        q_sup = hA * (t_inf - T[-1])
+        q[-1] += q_sup
+        calor += q_sup * dts
         T += q * inv_c
-    return T
+    return (T, calor) if devolver_calor else T
 
 
 def energia_absorvida_j(T: np.ndarray, T0: float, malha: Malha) -> float:

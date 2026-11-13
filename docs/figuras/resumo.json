@@ -1,0 +1,87 @@
+{
+  "erro_max_centro_c": {
+    "Bi=2.6": 0.0012894695135443612,
+    "Bi=13.0": 0.0034933423045941936,
+    "Bi=60.9": 0.0049408363372265285
+  },
+  "ordem_convergencia": 2.0,
+  "convergencia": {
+    "n=11": 0.01,
+    "n=21": 0.0213,
+    "n=41": 0.0093,
+    "n=81": 0.0023,
+    "n=161": 0.0006
+  },
+  "h_adotado": 4700.0,
+  "rmse_calibracao_c": 0.51,
+  "superficie_media_modelo": {
+    "80.2": 77.75,
+    "88.9": 86.06
+  },
+  "estrategias_88c_14mm": {
+    "preditivo": {
+      "conforme": true,
+      "motivos": [],
+      "tempo_corte_s": 11.5,
+      "tempo_letal_superficie_s": 10.66,
+      "temp_superficie_no_corte_c": 86.56,
+      "temp_centro_no_corte_c": 25.04,
+      "temp_centro_max_c": 39.72,
+      "taxa_inativacao_pct": 12.78,
+      "retencao_antocianinas_pct": 99.967,
+      "energia_absorvida_no_corte_kj_kg": 77.746
+    },
+    "fixo": {
+      "conforme": false,
+      "motivos": [
+        "Superfície ficou 9.1 s ≥ 80 °C (mínimo 10 s)."
+      ],
+      "tempo_corte_s": 10.0,
+      "tempo_letal_superficie_s": 9.15,
+      "temp_superficie_no_corte_c": 86.4,
+      "temp_centro_no_corte_c": 25.01,
+      "temp_centro_max_c": 38.39,
+      "taxa_inativacao_pct": 9.64,
+      "retencao_antocianinas_pct": 99.971,
+      "energia_absorvida_no_corte_kj_kg": 73.843
+    },
+    "centro_70": {
+      "conforme": true,
+      "motivos": [],
+      "tempo_corte_s": 83.0,
+      "tempo_letal_superficie_s": 82.29,
+      "temp_superficie_no_corte_c": 87.84,
+      "temp_centro_no_corte_c": 70.02,
+      "temp_centro_max_c": 76.24,
+      "taxa_inativacao_pct": 81.82,
+      "retencao_antocianinas_pct": 99.801,
+      "energia_absorvida_no_corte_kj_kg": 138.775
+    }
+  },
+  "sensibilidade_diametro_88c": {
+    "10": {
+      "preditivo_s": 11.0,
+      "centro_70_s": 43.0
+    },
+    "12": {
+      "preditivo_s": 11.0,
+      "centro_70_s": 61.5
+    },
+    "14": {
+      "preditivo_s": 11.5,
+      "centro_70_s": 83.0
+    },
+    "16": {
+      "preditivo_s": 11.5,
+      "centro_70_s": 108.5
+    },
+    "18": {
+      "preditivo_s": 11.5,
+      "centro_70_s": 137.0
+    },
+    "20": {
+      "preditivo_s": 11.5,
+      "centro_70_s": 168.5
+    }
+  }
+}

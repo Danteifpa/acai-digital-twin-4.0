@@ -9,6 +9,7 @@ tetos e pisos fixos), aqui cada nó da polpa acumula sua própria história:
 e o resultado é a média ponderada pela massa de polpa. Se a temperatura cair,
 a inativação NÃO regride – como na realidade.
 """
+
 from __future__ import annotations
 
 import math

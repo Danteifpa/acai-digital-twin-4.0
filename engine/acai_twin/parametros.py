@@ -4,18 +4,20 @@ Parâmetros físicos, cinéticos e sanitários do AçaíThermal Twin.
 Cada valor traz a fonte. Os marcados com [HIPÓTESE] não foram encontrados
 na literatura para o açaí e precisam ser calibrados/justificados no TCC.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 
 
 @dataclass(frozen=True)
 class Material:
     """Propriedades termofísicas de uma camada do fruto."""
+
     nome: str
-    k: float    # condutividade térmica [W/(m·K)]
+    k: float  # condutividade térmica [W/(m·K)]
     rho: float  # massa específica [kg/m³]
-    cp: float   # calor específico [J/(kg·K)]
+    cp: float  # calor específico [J/(kg·K)]
 
     @property
     def alpha(self) -> float:
@@ -68,6 +70,7 @@ class CineticaAntocianinas:
     doi:10.1007/s42452-020-2340-0 — Ea = 42,8 kJ/mol; k0 = 36,6 s⁻¹
     (ensaios a 60–90 °C, antocianinas totais da polpa).
     """
+
     k0_s: float = 36.6
     ea_j_mol: float = 42_800.0
 
@@ -79,6 +82,7 @@ class CineticaPOD:
       fração lábil:     D(89 °C) = 7,10 s, z = 4,3 °C
       fração resistente: D(89 °C) = 254 s, z = 2,4 °C
     """
+
     t_ref_c: float = 89.0
     d1_ref_s: float = 7.10
     z1_c: float = 4.3
@@ -97,6 +101,7 @@ class CriterioSanitario:
     barbeiro aderidos), logo o ponto crítico é r = R, não o centro.
     Critério adotado: temperatura efetiva da superfície ≥ 80 °C acumulada por ≥ 10 s.
     """
+
     temp_superficie_min_c: float = 80.0
     tempo_minimo_s: float = 10.0
 

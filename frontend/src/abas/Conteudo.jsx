@@ -95,7 +95,7 @@ POD (bifásica): A/A₀ = f·e^(−k₁t) + (1−f)·e^(−k₂t),   kᵢ = ln10
       </Cartao>
       <Cartao titulo="Verificação" icon={BookOpen}>
         <ul className="list-inside list-disc space-y-1.5 text-sm text-slate-300">
-          <li>Centro da esfera homogênea comparado à solução analítica em série (Bi = 2,6 a 61): erro &lt; 0,5 °C.</li>
+          <li>Centro da esfera homogênea comparado à solução analítica em série (Bi = 2,6 a 61): erro &lt; 0,01 °C; convergência de 2ª ordem.</li>
           <li>Conservação de energia e princípio do máximo verificados em teste automatizado.</li>
           <li>k(T) das antocianinas reproduz os valores experimentais de Anjos et al. (2020).</li>
         </ul>

@@ -5,6 +5,7 @@ O arquivo fica em $ACAI_DB (padrão: engine/dados/acai_twin.db). Em hospedagens
 com disco efêmero (ex.: Render gratuito) os dados somem a cada novo deploy:
 use a exportação CSV (/api/v1/lotes/{id}/csv) para guardar os ensaios do TCC.
 """
+
 from __future__ import annotations
 
 import csv
@@ -16,9 +17,19 @@ import threading
 from pathlib import Path
 
 COLUNAS = [
-    "lote_id", "tempo_decorrido_s", "temp_banho_c", "temp_superficie_c", "temp_centro_c",
-    "tempo_letal_superficie_s", "taxa_inativacao_pct", "retencao_antocianinas_pct",
-    "energia_absorvida_kj_kg", "imerso", "previsao_corte_s", "acao_recomendada", "status_processo",
+    "lote_id",
+    "tempo_decorrido_s",
+    "temp_banho_c",
+    "temp_superficie_c",
+    "temp_centro_c",
+    "tempo_letal_superficie_s",
+    "taxa_inativacao_pct",
+    "retencao_antocianinas_pct",
+    "energia_absorvida_kj_kg",
+    "imerso",
+    "previsao_corte_s",
+    "acao_recomendada",
+    "status_processo",
 ]
 
 _ESQUEMA = """
@@ -46,7 +57,8 @@ create index if not exists idx_estados_lote on estados (lote_id, tempo_decorrido
 
 class Armazenamento:
     def __init__(self, caminho: str | os.PathLike | None = None):
-        caminho = caminho or os.getenv("ACAI_DB") or Path(__file__).resolve().parents[1] / "dados" / "acai_twin.db"
+        padrao = Path(__file__).resolve().parents[1] / "dados" / "acai_twin.db"
+        caminho = caminho or os.getenv("ACAI_DB") or padrao
         if str(caminho) != ":memory:":
             Path(caminho).parent.mkdir(parents=True, exist_ok=True)
         self._con = sqlite3.connect(str(caminho), check_same_thread=False)

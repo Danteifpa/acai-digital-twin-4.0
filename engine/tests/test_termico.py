@@ -1,10 +1,11 @@
 """Verificação do solver térmico contra soluções analíticas (esfera homogênea)."""
+
 from dataclasses import replace
 
 import numpy as np
 import pytest
-from scipy.optimize import brentq
 
+from acai_twin.analitico import temperatura_esfera
 from acai_twin.parametros import POLPA, Conveccao, Geometria, ParametrosModelo
 from acai_twin.termico import avancar, construir_malha, energia_absorvida_j
 
@@ -21,15 +22,8 @@ def params_homogeneo(h: float, n: int = 81) -> ParametrosModelo:
     )
 
 
-def centro_analitico_robin(t, bi, alpha, T0=25.0, Tinf=85.0, termos=60):
-    """Esfera com convecção: autovalores de 1 − λ·cot λ = Bi."""
-    soma = 0.0
-    for n in range(1, termos + 1):
-        a, b = (n - 1) * np.pi + 1e-9, n * np.pi - 1e-9
-        lam = brentq(lambda x: 1 - x / np.tan(x) - bi, a, b)
-        cn = 4 * (np.sin(lam) - lam * np.cos(lam)) / (2 * lam - np.sin(2 * lam))
-        soma += cn * np.exp(-lam**2 * alpha * t / R**2)
-    return Tinf - (Tinf - T0) * soma
+def centro_analitico_robin(t, bi, alpha, T0=25.0, Tinf=85.0):
+    return temperatura_esfera(0.0, t, bi, alpha, R, T0, Tinf)
 
 
 @pytest.mark.parametrize("h", [200.0, 1000.0, 4700.0])
@@ -46,19 +40,25 @@ def test_centro_bate_com_solucao_analitica(h):
 
 
 def test_conservacao_de_energia():
+    """Calor que entra pela superfície = variação da energia interna (balanço global)."""
     p = ParametrosModelo()
     malha = construir_malha(p)
     T = np.full(malha.n, 25.0)
-    h, Tinf, dt = p.conveccao.h_imersao, 85.0, 0.25
-    calor_entrou = 0.0
+    calor_total = 0.0
+    for t_inf, h in [(85.0, p.conveccao.h_imersao), (25.0, p.conveccao.h_resfriamento)]:
+        for _ in range(60):
+            T, q = avancar(T, malha, t_inf, h, 0.5, devolver_calor=True)
+            calor_total += q
+    assert np.isclose(calor_total, energia_absorvida_j(T, 25.0, malha), rtol=1e-10)
+
+
+def test_principio_do_maximo():
+    p = ParametrosModelo()
+    malha = construir_malha(p)
+    T = np.full(malha.n, 25.0)
     for _ in range(200):
-        Ts_ini = T[-1]
-        T_novo = avancar(T, malha, Tinf, h, dt)
-        # calor que entrou pela superfície ≈ variação de energia interna
-        calor_entrou += energia_absorvida_j(T_novo, 0, malha) - energia_absorvida_j(T, 0, malha)
-        T = T_novo
-    assert np.isclose(calor_entrou, energia_absorvida_j(T, 25.0, malha), rtol=1e-9)
-    assert np.all(T <= Tinf + 1e-9) and np.all(T >= 25.0 - 1e-9)  # princípio do máximo
+        T = avancar(T, malha, 85.0, p.conveccao.h_imersao, 0.25)
+        assert T.max() <= 85.0 + 1e-9 and T.min() >= 25.0 - 1e-9
 
 
 def test_estabilidade_com_passo_grande():
