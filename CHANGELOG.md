@@ -17,8 +17,14 @@ Mudanças relevantes do projeto. Formato baseado em [Keep a Changelog](https://k
 - O gerador de PDF é carregado só quando o laudo é pedido, o que reduz o carregamento inicial do painel.
 - Teste de conservação de energia passou a comparar o calor que entra pela superfície com a variação de energia interna.
 
+### Corrigido
+- O sensor virtual dependia de `requests`, que não estava em nenhum requirements. Agora usa só a biblioteca padrão.
+- O favicon padrão do Vite foi trocado por um ícone próprio.
+- A versão do motor passou a ter fonte única (`acai_twin.__version__`).
+
 ### Removido
 - Dependência do Supabase (banco, chaves e `supabase-js`).
+- `frontend/public/icons.svg`, que sobrou do template do Vite e não era usado.
 
 ## [5.0.0] — 2026-11-13
 

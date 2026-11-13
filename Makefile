@@ -21,7 +21,7 @@ testes:          ## roda os testes do motor
 	cd engine && pytest
 
 lint:            ## verifica estilo do motor e do painel
-	cd engine && ruff check . && ruff format --check .
+	cd engine && ruff check . ../simulator && ruff format --check . ../simulator
 	cd frontend && npm run lint
 
 figuras:         ## regenera as figuras de validação em docs/figuras

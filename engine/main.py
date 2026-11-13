@@ -32,6 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from acai_twin import __version__
 from acai_twin.armazenamento import Armazenamento
 from acai_twin.parametros import ParametrosModelo
 from acai_twin.processo import Lote, simular_processo
@@ -40,7 +41,7 @@ app = FastAPI(
     title="AçaíThermal Twin Engine",
     description="Condução transiente em esfera composta (caroço + polpa) com contorno "
     "convectivo e cinética integrada de antocianinas e POD — TCC IFPA.",
-    version="5.1",
+    version=__version__,
 )
 
 _origens = os.getenv("CORS_ORIGINS", "*").split(",")
